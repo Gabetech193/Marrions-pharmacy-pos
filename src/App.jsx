@@ -174,6 +174,18 @@ export default function App() {
     return sale;
   };
 
+  // Deleting a sale restores any stock it took out, then removes the record.
+  const deleteSale = async (saleId) => {
+    const sale = sales.find((s) => s.id === saleId);
+    if (!sale) return;
+    const nextItems = items.map((i) => {
+      const line = sale.lines.find((l) => l.kind === "item" && l.refId === i.id);
+      return line ? { ...i, stockQty: i.stockQty + line.qty } : i;
+    });
+    await update.items(nextItems);
+    await update.sales(sales.filter((s) => s.id !== saleId));
+  };
+
   if (loading) {
     return (
       <div style={{ background: PAPER, minHeight: "100vh" }} className="flex items-center justify-center">
@@ -210,7 +222,7 @@ export default function App() {
 
   const ctx = {
     session, isAdmin, settings, users, services, items, sales, expenses, restocks,
-    update, completeSale, showReceipt: setReceipt,
+    update, completeSale, deleteSale, showReceipt: setReceipt,
   };
 
   return (
@@ -729,7 +741,7 @@ function ServicesView({ services, update }) {
 /* ---------------------------------------------------------------------- *
  *  STOCK / ITEMS
  * ---------------------------------------------------------------------- */
-function StockView({ items, update, restocks }) {
+function StockView({ items, update, restocks, settings }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [restockFor, setRestockFor] = useState(null);
@@ -758,11 +770,53 @@ function StockView({ items, update, restocks }) {
     setRestockFor(null);
   };
 
+  const printStockList = () => {
+    const rows = items.map((i) => {
+      const low = i.stockQty <= i.reorderLevel;
+      return `<tr>
+        <td>${i.name}${i.active ? "" : " (inactive)"}</td>
+        <td style="text-align:right">${fmtKES(i.buyingPrice)}</td>
+        <td style="text-align:right">${fmtKES(i.sellingPrice)}</td>
+        <td style="text-align:right;${low ? "color:#B3261E;font-weight:700;" : ""}">${i.stockQty}</td>
+        <td style="text-align:right">${i.reorderLevel}</td>
+        <td>${i.expiryDate ? fmtDate(i.expiryDate) : "—"}</td>
+      </tr>`;
+    }).join("");
+    const html = `<!doctype html><html><head><title>Stock List - ${settings.name}</title>
+      <meta charset="utf-8" />
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #1a1a1a; }
+        h1 { font-size: 18px; margin: 0 0 2px; }
+        p.sub { font-size: 12px; color: #555; margin: 0 0 18px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+        th { background: #f3f3f3; }
+        @media print { @page { margin: 14mm; } }
+      </style>
+      </head><body>
+        <h1>${settings.name}</h1>
+        <p class="sub">${settings.address || ""}${settings.address ? " · " : ""}Stock list printed ${fmtDateTime(new Date().toISOString())} · ${items.length} items</p>
+        <table>
+          <thead><tr><th>Item</th><th>Buy</th><th>Sell</th><th>Qty</th><th>Reorder</th><th>Expiry</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { alert("Please allow pop-ups for this site to print the stock list."); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  };
+
   return (
     <div className="px-4 py-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3" style={{ flexWrap: "wrap", gap: 8 }}>
         <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800 }}>Stock ({items.length})</h2>
-        <button onClick={openNew} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add item</button>
+        <div className="flex items-center gap-1.5">
+          <button onClick={printStockList} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: `1px solid ${LINE}`, background: "#fff", color: INK, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Printer size={14} /> Print / Save PDF</button>
+          <button onClick={openNew} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add item</button>
+        </div>
       </div>
       {items.length === 0 && <EmptyState text="No items yet." />}
       {items.map((i) => {
@@ -886,7 +940,7 @@ function ExpensesView({ expenses, update, session }) {
 /* ---------------------------------------------------------------------- *
  *  REPORTS
  * ---------------------------------------------------------------------- */
-function ReportsView({ sales, expenses, items }) {
+function ReportsView({ sales, expenses, items, deleteSale }) {
   const [range, setRange] = useState("today");
   const [customFrom, setCustomFrom] = useState(todayISO());
   const [customTo, setCustomTo] = useState(todayISO());
@@ -953,12 +1007,26 @@ function ReportsView({ sales, expenses, items }) {
       <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", margin: "14px 0 8px" }}>Transactions</p>
       {[...filteredSales].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((s) => (
         <SectionCard key={s.id}>
-          <div className="flex justify-between">
+          <div className="flex justify-between items-start">
             <div>
               <p style={{ fontSize: 12.5, fontWeight: 600 }}>Receipt #{String(s.receiptNo).padStart(6, "0")}</p>
               <p style={{ fontSize: 11, color: SLATE, marginTop: 1 }}>{fmtDateTime(s.createdAt)} · {s.cashierName} · {s.paymentMethod}</p>
             </div>
-            <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(s.total)}</p>
+            <div className="flex items-center gap-2">
+              <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(s.total)}</p>
+              <button
+                onClick={() => {
+                  if (window.confirm(`Delete Receipt #${String(s.receiptNo).padStart(6, "0")} (${fmtKES(s.total)})? Any stock it used will be restored. This cannot be undone.`)) {
+                    deleteSale(s.id);
+                  }
+                }}
+                className="focus-ring"
+                title="Delete sale"
+                style={{ padding: 5, background: "none", border: "none", color: RED, cursor: "pointer" }}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
         </SectionCard>
       ))}
@@ -983,11 +1051,17 @@ function ReportsView({ sales, expenses, items }) {
 /* ---------------------------------------------------------------------- *
  *  MY SALES (cashier view)
  * ---------------------------------------------------------------------- */
-function MySalesView({ sales, session, showReceipt }) {
+function MySalesView({ sales, session, showReceipt, deleteSale }) {
   const mine = sales.filter((s) => s.cashierId === session.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
   const today = todayISO();
   const todayMine = mine.filter((s) => s.createdAt.slice(0, 10) === today);
   const todayTotal = todayMine.reduce((s, x) => s + x.total, 0);
+
+  const handleDelete = (s) => {
+    if (window.confirm(`Delete Receipt #${String(s.receiptNo).padStart(6, "0")} (${fmtKES(s.total)})? Any stock it used will be restored. This cannot be undone.`)) {
+      deleteSale(s.id);
+    }
+  };
 
   return (
     <div className="px-4 py-4">
@@ -995,15 +1069,20 @@ function MySalesView({ sales, session, showReceipt }) {
       <p style={{ fontSize: 12, color: SLATE, marginBottom: 10 }}>Today: {todayMine.length} sales · {fmtKES(todayTotal)}</p>
       {mine.length === 0 && <EmptyState text="No sales yet." />}
       {mine.map((s) => (
-        <button key={s.id} onClick={() => showReceipt(s)} className="focus-ring" style={{ width: "100%", textAlign: "left", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, marginBottom: 10, cursor: "pointer" }}>
-          <div className="flex justify-between">
-            <div>
-              <p style={{ fontSize: 12.5, fontWeight: 600 }}>Receipt #{String(s.receiptNo).padStart(6, "0")}</p>
-              <p style={{ fontSize: 11, color: SLATE, marginTop: 1 }}>{fmtDateTime(s.createdAt)} · {s.paymentMethod}</p>
+        <div key={s.id} className="flex items-center gap-1.5" style={{ marginBottom: 10 }}>
+          <button onClick={() => showReceipt(s)} className="focus-ring" style={{ flex: 1, textAlign: "left", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, cursor: "pointer" }}>
+            <div className="flex justify-between">
+              <div>
+                <p style={{ fontSize: 12.5, fontWeight: 600 }}>Receipt #{String(s.receiptNo).padStart(6, "0")}</p>
+                <p style={{ fontSize: 11, color: SLATE, marginTop: 1 }}>{fmtDateTime(s.createdAt)} · {s.paymentMethod}</p>
+              </div>
+              <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(s.total)}</p>
             </div>
-            <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(s.total)}</p>
-          </div>
-        </button>
+          </button>
+          <button onClick={() => handleDelete(s)} className="focus-ring" title="Delete sale" style={{ padding: 10, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 10, color: RED, cursor: "pointer" }}>
+            <Trash2 size={15} />
+          </button>
+        </div>
       ))}
     </div>
   );
