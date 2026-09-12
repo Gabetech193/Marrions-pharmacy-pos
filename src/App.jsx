@@ -3,8 +3,9 @@ import {
   LayoutDashboard, ShoppingCart, Wrench,
   BarChart3, Users, Settings as SettingsIcon, LogOut, Plus, Minus, X,
   Trash2, Pencil, Search, AlertTriangle, Printer, ArrowLeft, Check,
-  Wallet, Lock, Boxes, ClipboardList
+  Wallet, Lock, Boxes, ClipboardList, Camera
 } from "lucide-react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import { db } from "./db";
 
 /* ---------------------------------------------------------------------- *
@@ -421,6 +422,47 @@ function ModalActions({ onCancel, onSave, saveLabel = "Save" }) {
 }
 
 /* ---------------------------------------------------------------------- *
+ *  BARCODE SCANNER — opens the phone camera and decodes a barcode/QR
+ *  using the device's back camera, then hands the raw text back up.
+ * ---------------------------------------------------------------------- */
+function BarcodeScannerModal({ onDetect, onClose }) {
+  const videoRef = useRef(null);
+  const [scanError, setScanError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    let controls;
+    const reader = new BrowserMultiFormatReader();
+    reader
+      .decodeFromVideoDevice(undefined, videoRef.current, (result) => {
+        if (result && !cancelled) {
+          cancelled = true;
+          controls && controls.stop();
+          onDetect(result.getText());
+        }
+      })
+      .then((c) => { controls = c; })
+      .catch(() => {
+        if (!cancelled) setScanError("Couldn't access the camera. Check that this site has camera permission.");
+      });
+    return () => { cancelled = true; controls && controls.stop(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,.9)", zIndex: 70, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <p style={{ color: "#fff", fontSize: 13.5, fontWeight: 700, marginBottom: 12 }}>Point the camera at a barcode</p>
+      <div style={{ width: "100%", maxWidth: 380, background: "#000", borderRadius: 16, overflow: "hidden", position: "relative" }}>
+        <video ref={videoRef} style={{ width: "100%", display: "block" }} muted playsInline />
+        <div style={{ position: "absolute", inset: 28, border: "2px solid #fff", borderRadius: 10, opacity: 0.55, pointerEvents: "none" }} />
+      </div>
+      {scanError && <p style={{ color: "#fff", fontSize: 12.5, marginTop: 14, textAlign: "center", maxWidth: 320 }}>{scanError}</p>}
+      <button onClick={onClose} className="focus-ring" style={{ marginTop: 18, padding: "10px 22px", borderRadius: 9, border: "none", background: "#fff", color: INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- *
  *  NEW SALE — the hero screen. Big tappable tiles, a running cart, one
  *  Complete Sale action.
  * ---------------------------------------------------------------------- */
@@ -431,6 +473,7 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
   const [payment, setPayment] = useState("Cash");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   const catalogList = catalog === "services"
     ? services.filter((s) => s.active)
@@ -448,6 +491,31 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
       const unitPrice = kind === "service" ? entry.price : entry.sellingPrice;
       return [...prev, { kind, refId: entry.id, name: entry.name, unitPrice, qty: 1 }];
     });
+  };
+
+  // Scanning always targets medicines/items (by barcode), regardless of
+  // which catalog tab is currently active.
+  const addItemToCart = (item) => {
+    setError("");
+    setCart((prev) => {
+      const already = prev.find((l) => l.kind === "item" && l.refId === item.id);
+      if (already) {
+        return prev.map((l) => (l === already ? { ...l, qty: l.qty + 1 } : l));
+      }
+      return [...prev, { kind: "item", refId: item.id, name: item.name, unitPrice: item.sellingPrice, qty: 1 }];
+    });
+  };
+
+  const handleScan = (code) => {
+    setShowScanner(false);
+    const item = items.find((i) => i.barcode && i.barcode === code);
+    if (!item) { setError(`No item matches barcode ${code}.`); return; }
+    const isExpired = item.expiryDate && daysUntil(item.expiryDate) < 0;
+    if (!item.active || item.stockQty <= 0 || isExpired) {
+      setError(`${item.name} is out of stock.`);
+      return;
+    }
+    addItemToCart(item);
   };
 
   const setQty = (line, qty) => {
@@ -474,14 +542,20 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
 
   return (
     <div className="px-4 py-4">
+      {showScanner && <BarcodeScannerModal onDetect={handleScan} onClose={() => setShowScanner(false)} />}
       <div className="flex gap-2 mb-3">
         <button onClick={() => setCatalog("services")} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: catalog === "services" ? INK : PANEL, color: catalog === "services" ? "#fff" : INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Services</button>
         <button onClick={() => setCatalog("items")} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: catalog === "items" ? INK : PANEL, color: catalog === "items" ? "#fff" : INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Medicines</button>
       </div>
 
-      <div className="relative mb-3">
-        <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${catalog}…`} className="focus-ring" style={{ ...inputStyle, paddingLeft: 32 }} />
+      <div className="flex gap-2 mb-3">
+        <div className="relative" style={{ flex: 1 }}>
+          <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${catalog}…`} className="focus-ring" style={{ ...inputStyle, paddingLeft: 32 }} />
+        </div>
+        <button onClick={() => { setError(""); setShowScanner(true); }} className="focus-ring flex items-center justify-center" title="Scan barcode" style={{ width: 42, borderRadius: 10, border: `1px solid ${LINE}`, background: PANEL, color: INK, cursor: "pointer", flexShrink: 0 }}>
+          <Camera size={18} />
+        </button>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 90 }}>
@@ -746,14 +820,15 @@ function StockView({ items, update, restocks, settings }) {
   const [editing, setEditing] = useState(null);
   const [restockFor, setRestockFor] = useState(null);
   const [form, setForm] = useState(blankForm());
-  function blankForm() { return { name: "", buyingPrice: "", sellingPrice: "", stockQty: "", reorderLevel: "", expiryDate: "" }; }
+  const [scanningForForm, setScanningForForm] = useState(false);
+  function blankForm() { return { name: "", buyingPrice: "", sellingPrice: "", stockQty: "", reorderLevel: "", expiryDate: "", barcode: "" }; }
 
   const openNew = () => { setForm(blankForm()); setEditing(null); setShowForm(true); };
-  const openEdit = (i) => { setForm({ name: i.name, buyingPrice: i.buyingPrice, sellingPrice: i.sellingPrice, stockQty: i.stockQty, reorderLevel: i.reorderLevel, expiryDate: i.expiryDate || "" }); setEditing(i.id); setShowForm(true); };
+  const openEdit = (i) => { setForm({ name: i.name, buyingPrice: i.buyingPrice, sellingPrice: i.sellingPrice, stockQty: i.stockQty, reorderLevel: i.reorderLevel, expiryDate: i.expiryDate || "", barcode: i.barcode || "" }); setEditing(i.id); setShowForm(true); };
 
   const save = async () => {
     if (!form.name.trim()) return;
-    const payload = { name: form.name, buyingPrice: Number(form.buyingPrice) || 0, sellingPrice: Number(form.sellingPrice) || 0, stockQty: Number(form.stockQty) || 0, reorderLevel: Number(form.reorderLevel) || 0, expiryDate: form.expiryDate || "" };
+    const payload = { name: form.name, buyingPrice: Number(form.buyingPrice) || 0, sellingPrice: Number(form.sellingPrice) || 0, stockQty: Number(form.stockQty) || 0, reorderLevel: Number(form.reorderLevel) || 0, expiryDate: form.expiryDate || "", barcode: form.barcode.trim() || "" };
     if (editing) {
       await update.items(items.map((i) => (i.id === editing ? { ...i, ...payload } : i)));
     } else {
@@ -863,8 +938,22 @@ function StockView({ items, update, restocks, settings }) {
             <Field label="Reorder level"><input type="number" className="focus-ring" style={inputStyle} value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} /></Field>
           </div>
           <Field label="Expiry date (optional)"><input type="date" className="focus-ring" style={inputStyle} value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} /></Field>
+          <Field label="Barcode (optional)">
+            <div className="flex gap-2">
+              <input className="focus-ring" style={{ ...inputStyle, flex: 1 }} value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Scan or type barcode" />
+              <button type="button" onClick={() => setScanningForForm(true)} className="focus-ring flex items-center justify-center" title="Scan barcode" style={{ width: 42, borderRadius: 9, border: `1px solid ${LINE}`, background: "#fff", color: INK, cursor: "pointer", flexShrink: 0 }}>
+                <Camera size={16} />
+              </button>
+            </div>
+          </Field>
           <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
         </Modal>
+      )}
+      {scanningForForm && (
+        <BarcodeScannerModal
+          onDetect={(code) => { setForm((f) => ({ ...f, barcode: code })); setScanningForForm(false); }}
+          onClose={() => setScanningForForm(false)}
+        />
       )}
       {restockFor && <RestockModal item={restockFor} onClose={() => setRestockFor(null)} onSave={doRestock} />}
     </div>

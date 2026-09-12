@@ -16,6 +16,7 @@ const itemToDb = (i) => ({
   reorder_level: i.reorderLevel,
   expiry_date: i.expiryDate || null,
   active: i.active,
+  barcode: i.barcode || null,
 });
 const itemFromDb = (r) => ({
   id: r.id,
@@ -26,6 +27,7 @@ const itemFromDb = (r) => ({
   reorderLevel: r.reorder_level,
   expiryDate: r.expiry_date || "",
   active: r.active,
+  barcode: r.barcode || "",
 });
 
 const saleToDb = (s) => ({
