@@ -469,6 +469,7 @@ function BarcodeScannerModal({ onDetect, onClose }) {
 function NewSale({ services, items, session, completeSale, showReceipt }) {
   const [catalog, setCatalog] = useState("services");
   const [query, setQuery] = useState("");
+  const [medQuery, setMedQuery] = useState("");
   const [cart, setCart] = useState([]); // { kind, refId, name, unitPrice, qty }
   const [payment, setPayment] = useState("Cash");
   const [error, setError] = useState("");
@@ -479,6 +480,10 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
     ? services.filter((s) => s.active)
     : items.filter((i) => i.active);
   const filtered = catalogList.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
+
+  const medMatches = medQuery.trim()
+    ? items.filter((i) => i.active && i.name.toLowerCase().includes(medQuery.trim().toLowerCase())).slice(0, 8)
+    : [];
 
   const addToCart = (entry) => {
     setError("");
@@ -518,6 +523,13 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
     addItemToCart(item);
   };
 
+  const pickMedMatch = (item) => {
+    const isExpired = item.expiryDate && daysUntil(item.expiryDate) < 0;
+    if (item.stockQty <= 0 || isExpired) return;
+    addItemToCart(item);
+    setMedQuery("");
+  };
+
   const setQty = (line, qty) => {
     if (qty <= 0) { setCart((prev) => prev.filter((l) => l !== line)); return; }
     setCart((prev) => prev.map((l) => (l === line ? { ...l, qty } : l)));
@@ -543,19 +555,53 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
   return (
     <div className="px-4 py-4">
       {showScanner && <BarcodeScannerModal onDetect={handleScan} onClose={() => setShowScanner(false)} />}
+
+      <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", marginBottom: 6 }}>Quick add medicine</p>
+      <div className="relative mb-4">
+        <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
+        <input
+          value={medQuery}
+          onChange={(e) => setMedQuery(e.target.value)}
+          placeholder="Search any medicine to add…"
+          className="focus-ring"
+          style={{ ...inputStyle, paddingLeft: 32, paddingRight: 42 }}
+        />
+        <button onClick={() => { setError(""); setShowScanner(true); }} className="focus-ring flex items-center justify-center" title="Scan barcode" style={{ position: "absolute", right: 4, top: 4, width: 34, height: 34, borderRadius: 8, border: "none", background: "none", color: INK, cursor: "pointer" }}>
+          <Camera size={17} />
+        </button>
+        {medMatches.length > 0 && (
+          <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, maxHeight: 280, overflowY: "auto" }}>
+            {medMatches.map((it) => {
+              const isExpired = it.expiryDate && daysUntil(it.expiryDate) < 0;
+              const outOfStock = it.stockQty <= 0 || isExpired;
+              return (
+                <button
+                  key={it.id}
+                  onClick={() => pickMedMatch(it)}
+                  disabled={outOfStock}
+                  className="focus-ring"
+                  style={{ width: "100%", textAlign: "left", padding: "10px 12px", border: "none", borderBottom: `1px solid ${LINE}`, background: "none", cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.5 : 1 }}
+                >
+                  <div className="flex justify-between">
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</span>
+                    <span style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 700, color: MARIGOLD }}>{fmtKES(it.sellingPrice)}</span>
+                  </div>
+                  <span style={{ fontSize: 10.5, color: outOfStock ? RED : SLATE }}>{isExpired ? "Expired" : it.stockQty <= 0 ? "Out of stock" : `${it.stockQty} in stock`}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-2 mb-3">
         <button onClick={() => setCatalog("services")} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: catalog === "services" ? INK : PANEL, color: catalog === "services" ? "#fff" : INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Services</button>
         <button onClick={() => setCatalog("items")} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: catalog === "items" ? INK : PANEL, color: catalog === "items" ? "#fff" : INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Medicines</button>
       </div>
 
-      <div className="flex gap-2 mb-3">
-        <div className="relative" style={{ flex: 1 }}>
-          <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${catalog}…`} className="focus-ring" style={{ ...inputStyle, paddingLeft: 32 }} />
-        </div>
-        <button onClick={() => { setError(""); setShowScanner(true); }} className="focus-ring flex items-center justify-center" title="Scan barcode" style={{ width: 42, borderRadius: 10, border: `1px solid ${LINE}`, background: PANEL, color: INK, cursor: "pointer", flexShrink: 0 }}>
-          <Camera size={18} />
-        </button>
+      <div className="relative mb-3">
+        <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
+        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${catalog}…`} className="focus-ring" style={{ ...inputStyle, paddingLeft: 32 }} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 90 }}>
