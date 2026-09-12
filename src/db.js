@@ -17,6 +17,7 @@ const itemToDb = (i) => ({
   expiry_date: i.expiryDate || null,
   active: i.active,
   barcode: i.barcode || null,
+  image_url: i.imageUrl || null,
 });
 const itemFromDb = (r) => ({
   id: r.id,
@@ -28,6 +29,7 @@ const itemFromDb = (r) => ({
   expiryDate: r.expiry_date || "",
   active: r.active,
   barcode: r.barcode || "",
+  imageUrl: r.image_url || "",
 });
 
 const saleToDb = (s) => ({
@@ -92,6 +94,7 @@ const settingsToDb = (s) => ({
   phone: s.phone,
   receipt_footer: s.receiptFooter,
   next_receipt_no: s.nextReceiptNo,
+  next_po_no: s.nextPoNo,
 });
 const settingsFromDb = (r) => ({
   name: r.name,
@@ -99,6 +102,45 @@ const settingsFromDb = (r) => ({
   phone: r.phone,
   receiptFooter: r.receipt_footer,
   nextReceiptNo: r.next_receipt_no,
+  nextPoNo: r.next_po_no,
+});
+
+const vendorToDb = (v) => ({
+  id: v.id,
+  name: v.name,
+  phone: v.phone,
+  address: v.address || null,
+  notes: v.notes || null,
+});
+const vendorFromDb = (r) => ({
+  id: r.id,
+  name: r.name,
+  phone: r.phone,
+  address: r.address || "",
+  notes: r.notes || "",
+});
+
+const poToDb = (p) => ({
+  id: p.id,
+  po_number: p.poNumber,
+  vendor_id: p.vendorId || null,
+  vendor_name: p.vendorName,
+  vendor_phone: p.vendorPhone,
+  lines: p.lines,
+  total: p.total,
+  notes: p.notes || null,
+  created_at: p.createdAt,
+});
+const poFromDb = (r) => ({
+  id: r.id,
+  poNumber: r.po_number,
+  vendorId: r.vendor_id,
+  vendorName: r.vendor_name,
+  vendorPhone: r.vendor_phone,
+  lines: r.lines,
+  total: Number(r.total),
+  notes: r.notes || "",
+  createdAt: r.created_at,
 });
 
 // Replaces the full contents of a table with `rows` (mapped via toDb).
@@ -113,7 +155,7 @@ async function replaceAll(table, rows, toDb) {
 
 export const db = {
   async loadAll() {
-    const [set, usr, svc, itm, sls, exp, rst] = await Promise.all([
+    const [set, usr, svc, itm, sls, exp, rst, vnd, po] = await Promise.all([
       supabase.from("settings").select("*").eq("id", 1).single(),
       supabase.from("users").select("*"),
       supabase.from("services").select("*"),
@@ -121,8 +163,10 @@ export const db = {
       supabase.from("sales").select("*").order("created_at", { ascending: true }),
       supabase.from("expenses").select("*").order("date", { ascending: true }),
       supabase.from("restocks").select("*").order("date", { ascending: true }),
+      supabase.from("vendors").select("*"),
+      supabase.from("purchase_orders").select("*").order("created_at", { ascending: true }),
     ]);
-    for (const res of [set, usr, svc, itm, sls, exp, rst]) {
+    for (const res of [set, usr, svc, itm, sls, exp, rst, vnd, po]) {
       if (res.error) throw res.error;
     }
     return {
@@ -133,6 +177,8 @@ export const db = {
       sales: sls.data.map(saleFromDb),
       expenses: exp.data.map(expenseFromDb),
       restocks: rst.data.map(restockFromDb),
+      vendors: vnd.data.map(vendorFromDb),
+      purchaseOrders: po.data.map(poFromDb),
     };
   },
 
@@ -157,5 +203,21 @@ export const db = {
   },
   async saveRestocks(next) {
     await replaceAll("restocks", next, restockToDb);
+  },
+  async saveVendors(next) {
+    await replaceAll("vendors", next, vendorToDb);
+  },
+  async savePurchaseOrders(next) {
+    await replaceAll("purchase_orders", next, poToDb);
+  },
+
+  // Uploads a picture to the "item-images" bucket and returns its public URL.
+  async uploadItemImage(itemId, file) {
+    const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+    const path = `${itemId}-${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("item-images").upload(path, file, { upsert: true, contentType: file.type });
+    if (error) throw error;
+    const { data } = supabase.storage.from("item-images").getPublicUrl(path);
+    return data.publicUrl;
   },
 };

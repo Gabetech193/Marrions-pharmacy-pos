@@ -3,7 +3,8 @@ import {
   LayoutDashboard, ShoppingCart, Wrench,
   BarChart3, Users, Settings as SettingsIcon, LogOut, Plus, Minus, X,
   Trash2, Pencil, Search, AlertTriangle, Printer, ArrowLeft, Check,
-  Wallet, Lock, Boxes, ClipboardList, Camera
+  Wallet, Lock, Boxes, ClipboardList, Camera, Truck, MessageCircle,
+  ImagePlus, Building2, FileText
 } from "lucide-react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { db } from "./db";
@@ -96,7 +97,7 @@ const DEFAULT_USERS = [
   { id: uid(), name: "Cashier", pin: "0000", role: "Cashier" },
 ];
 const DEFAULT_SETTINGS = {
-  name: "Marrions Pharmacy", address: "P.O. Box 15 Kamakuywa", phone: "", receiptFooter: "Thank you for your business! Get well soon.", nextReceiptNo: 100,
+  name: "Marrions Pharmacy", address: "P.O. Box 15 Kamakuywa", phone: "", receiptFooter: "Thank you for your business! Get well soon.", nextReceiptNo: 100, nextPoNo: 1,
 };
 
 export default function App() {
@@ -109,6 +110,8 @@ export default function App() {
   const [sales, setSalesState] = useState([]);
   const [expenses, setExpensesState] = useState([]);
   const [restocks, setRestocksState] = useState([]);
+  const [vendors, setVendorsState] = useState([]);
+  const [purchaseOrders, setPurchaseOrdersState] = useState([]);
   const [session, setSession] = useState(null);
   const [tab, setTab] = useState("sale");
   const [receipt, setReceipt] = useState(null);
@@ -124,6 +127,8 @@ export default function App() {
         setSalesState(all.sales);
         setExpensesState(all.expenses);
         setRestocksState(all.restocks);
+        setVendorsState(all.vendors);
+        setPurchaseOrdersState(all.purchaseOrders);
       } catch (e) {
         console.error("Failed to load from Supabase", e);
         setLoadError(e.message || "Could not connect to the database.");
@@ -144,6 +149,8 @@ export default function App() {
     sales: async (next) => { setSalesState(next); await db.saveSales(next); },
     expenses: async (next) => { setExpensesState(next); await db.saveExpenses(next); },
     restocks: async (next) => { setRestocksState(next); await db.saveRestocks(next); },
+    vendors: async (next) => { setVendorsState(next); await db.saveVendors(next); },
+    purchaseOrders: async (next) => { setPurchaseOrdersState(next); await db.savePurchaseOrders(next); },
   };
 
   const isAdmin = session?.role === "Administrator";
@@ -222,7 +229,7 @@ export default function App() {
   }
 
   const ctx = {
-    session, isAdmin, settings, users, services, items, sales, expenses, restocks,
+    session, isAdmin, settings, users, services, items, sales, expenses, restocks, vendors, purchaseOrders,
     update, completeSale, deleteSale, showReceipt: setReceipt,
   };
 
@@ -235,6 +242,7 @@ export default function App() {
         {tab === "mysales" && !isAdmin && <MySalesView {...ctx} />}
         {tab === "services" && isAdmin && <ServicesView {...ctx} />}
         {tab === "stock" && isAdmin && <StockView {...ctx} />}
+        {tab === "purchases" && isAdmin && <PurchasesView {...ctx} />}
         {tab === "expenses" && isAdmin && <ExpensesView {...ctx} />}
         {tab === "reports" && isAdmin && <ReportsView {...ctx} />}
         {tab === "users" && isAdmin && <UsersView {...ctx} />}
@@ -329,6 +337,7 @@ function Shell({ session, isAdmin, tab, setTab, settings, onLogout, children }) 
     { id: "sale", label: "New Sale", icon: ShoppingCart },
     { id: "services", label: "Services", icon: Wrench },
     { id: "stock", label: "Stock", icon: Boxes },
+    { id: "purchases", label: "Purchases", icon: Truck },
     { id: "expenses", label: "Expenses", icon: Wallet },
     { id: "reports", label: "Reports", icon: BarChart3 },
     { id: "users", label: "Users", icon: Users },
@@ -579,14 +588,19 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
                   key={it.id}
                   onClick={() => pickMedMatch(it)}
                   disabled={outOfStock}
-                  className="focus-ring"
-                  style={{ width: "100%", textAlign: "left", padding: "10px 12px", border: "none", borderBottom: `1px solid ${LINE}`, background: "none", cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.5 : 1 }}
+                  className="focus-ring flex items-center gap-2.5"
+                  style={{ width: "100%", textAlign: "left", padding: "8px 12px", border: "none", borderBottom: `1px solid ${LINE}`, background: "none", cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.5 : 1 }}
                 >
-                  <div className="flex justify-between">
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</span>
-                    <span style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 700, color: MARIGOLD }}>{fmtKES(it.sellingPrice)}</span>
+                  {it.imageUrl
+                    ? <img src={it.imageUrl} alt="" style={{ width: 32, height: 32, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
+                    : <div style={{ width: 32, height: 32, borderRadius: 7, background: PAPER, flexShrink: 0 }} />}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="flex justify-between">
+                      <span style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</span>
+                      <span style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 700, color: MARIGOLD }}>{fmtKES(it.sellingPrice)}</span>
+                    </div>
+                    <span style={{ fontSize: 10.5, color: outOfStock ? RED : SLATE }}>{isExpired ? "Expired" : it.stockQty <= 0 ? "Out of stock" : `${it.stockQty} in stock`}</span>
                   </div>
-                  <span style={{ fontSize: 10.5, color: outOfStock ? RED : SLATE }}>{isExpired ? "Expired" : it.stockQty <= 0 ? "Out of stock" : `${it.stockQty} in stock`}</span>
                 </button>
               );
             })}
@@ -867,14 +881,16 @@ function StockView({ items, update, restocks, settings }) {
   const [restockFor, setRestockFor] = useState(null);
   const [form, setForm] = useState(blankForm());
   const [scanningForForm, setScanningForForm] = useState(false);
-  function blankForm() { return { name: "", buyingPrice: "", sellingPrice: "", stockQty: "", reorderLevel: "", expiryDate: "", barcode: "" }; }
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageError, setImageError] = useState("");
+  function blankForm() { return { name: "", buyingPrice: "", sellingPrice: "", stockQty: "", reorderLevel: "", expiryDate: "", barcode: "", imageUrl: "" }; }
 
-  const openNew = () => { setForm(blankForm()); setEditing(null); setShowForm(true); };
-  const openEdit = (i) => { setForm({ name: i.name, buyingPrice: i.buyingPrice, sellingPrice: i.sellingPrice, stockQty: i.stockQty, reorderLevel: i.reorderLevel, expiryDate: i.expiryDate || "", barcode: i.barcode || "" }); setEditing(i.id); setShowForm(true); };
+  const openNew = () => { setForm(blankForm()); setEditing(null); setImageError(""); setShowForm(true); };
+  const openEdit = (i) => { setForm({ name: i.name, buyingPrice: i.buyingPrice, sellingPrice: i.sellingPrice, stockQty: i.stockQty, reorderLevel: i.reorderLevel, expiryDate: i.expiryDate || "", barcode: i.barcode || "", imageUrl: i.imageUrl || "" }); setEditing(i.id); setImageError(""); setShowForm(true); };
 
   const save = async () => {
     if (!form.name.trim()) return;
-    const payload = { name: form.name, buyingPrice: Number(form.buyingPrice) || 0, sellingPrice: Number(form.sellingPrice) || 0, stockQty: Number(form.stockQty) || 0, reorderLevel: Number(form.reorderLevel) || 0, expiryDate: form.expiryDate || "", barcode: form.barcode.trim() || "" };
+    const payload = { name: form.name, buyingPrice: Number(form.buyingPrice) || 0, sellingPrice: Number(form.sellingPrice) || 0, stockQty: Number(form.stockQty) || 0, reorderLevel: Number(form.reorderLevel) || 0, expiryDate: form.expiryDate || "", barcode: form.barcode.trim() || "", imageUrl: form.imageUrl || "" };
     if (editing) {
       await update.items(items.map((i) => (i.id === editing ? { ...i, ...payload } : i)));
     } else {
@@ -884,6 +900,21 @@ function StockView({ items, update, restocks, settings }) {
   };
   const toggleActive = async (i) => update.items(items.map((x) => (x.id === i.id ? { ...x, active: !x.active } : x)));
   const remove = async (id) => update.items(items.filter((i) => i.id !== id));
+
+  const handleImagePick = async (file) => {
+    if (!file) return;
+    setImageError("");
+    setUploadingImage(true);
+    try {
+      const tempId = editing || `new-${uid()}`;
+      const url = await db.uploadItemImage(tempId, file);
+      setForm((f) => ({ ...f, imageUrl: url }));
+    } catch (e) {
+      setImageError(e.message || "Couldn't upload the picture.");
+    } finally {
+      setUploadingImage(false);
+    }
+  };
 
   const doRestock = async (item, qty, cost, note, expiryDate) => {
     await update.items(items.map((i) => (i.id === item.id ? { ...i, stockQty: i.stockQty + qty, ...(cost ? { buyingPrice: cost } : {}), ...(expiryDate ? { expiryDate } : {}) } : i)));
@@ -948,17 +979,22 @@ function StockView({ items, update, restocks, settings }) {
         return (
           <SectionCard key={i.id}>
             <div className="flex items-start justify-between">
-              <div>
-                <p style={{ fontWeight: 600, fontSize: 13.5, opacity: i.active ? 1 : 0.45 }}>{i.name}</p>
-                <p style={{ fontSize: 11.5, color: SLATE, marginTop: 2 }}>Buy {fmtKES(i.buyingPrice)} · Sell {fmtKES(i.sellingPrice)}</p>
-                <p style={{ fontFamily: MONO_FONT, fontSize: 12.5, marginTop: 3, color: low ? RED : INK, fontWeight: 600 }}>
-                  {low && "⚠️ "}{i.stockQty} in stock {low && `(reorder at ${i.reorderLevel})`}
-                </p>
-                {i.expiryDate && (
-                  <p style={{ fontSize: 11.5, marginTop: 2, color: expired ? RED : expiringSoon ? "#8A5A17" : SLATE, fontWeight: expired || expiringSoon ? 700 : 400 }}>
-                    {expired ? "⚠️ Expired " : expiringSoon ? "⚠️ Expires " : "Expires "}{fmtDate(i.expiryDate)}{expiringSoon && ` (${dLeft}d)`}
+              <div className="flex items-start gap-2.5">
+                {i.imageUrl
+                  ? <img src={i.imageUrl} alt="" style={{ width: 44, height: 44, borderRadius: 9, objectFit: "cover", flexShrink: 0, opacity: i.active ? 1 : 0.45, border: `1px solid ${LINE}` }} />
+                  : <div style={{ width: 44, height: 44, borderRadius: 9, background: PAPER, border: `1px dashed ${LINE}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={16} color="#C9C1AC" /></div>}
+                <div>
+                  <p style={{ fontWeight: 600, fontSize: 13.5, opacity: i.active ? 1 : 0.45 }}>{i.name}</p>
+                  <p style={{ fontSize: 11.5, color: SLATE, marginTop: 2 }}>Buy {fmtKES(i.buyingPrice)} · Sell {fmtKES(i.sellingPrice)}</p>
+                  <p style={{ fontFamily: MONO_FONT, fontSize: 12.5, marginTop: 3, color: low ? RED : INK, fontWeight: 600 }}>
+                    {low && "⚠️ "}{i.stockQty} in stock {low && `(reorder at ${i.reorderLevel})`}
                   </p>
-                )}
+                  {i.expiryDate && (
+                    <p style={{ fontSize: 11.5, marginTop: 2, color: expired ? RED : expiringSoon ? "#8A5A17" : SLATE, fontWeight: expired || expiringSoon ? 700 : 400 }}>
+                      {expired ? "⚠️ Expired " : expiringSoon ? "⚠️ Expires " : "Expires "}{fmtDate(i.expiryDate)}{expiringSoon && ` (${dLeft}d)`}
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => openEdit(i)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: SLATE, cursor: "pointer" }}><Pencil size={14} /></button>
@@ -992,6 +1028,23 @@ function StockView({ items, update, restocks, settings }) {
               </button>
             </div>
           </Field>
+          <Field label="Picture (optional)">
+            <div className="flex items-center gap-3">
+              {form.imageUrl
+                ? <img src={form.imageUrl} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: `1px solid ${LINE}` }} />
+                : <div style={{ width: 56, height: 56, borderRadius: 10, background: "#fff", border: `1px dashed ${LINE}`, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={20} color="#C9C1AC" /></div>}
+              <div>
+                <label className="focus-ring" style={{ display: "inline-block", padding: "7px 12px", borderRadius: 8, border: `1px solid ${LINE}`, background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                  {uploadingImage ? "Uploading…" : form.imageUrl ? "Change photo" : "Add photo"}
+                  <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} disabled={uploadingImage} onChange={(e) => handleImagePick(e.target.files?.[0])} />
+                </label>
+                {form.imageUrl && !uploadingImage && (
+                  <button type="button" onClick={() => setForm((f) => ({ ...f, imageUrl: "" }))} className="focus-ring" style={{ marginLeft: 8, fontSize: 11.5, color: RED, background: "none", border: "none", cursor: "pointer" }}>Remove</button>
+                )}
+                {imageError && <p style={{ fontSize: 11, color: RED, marginTop: 4 }}>{imageError}</p>}
+              </div>
+            </div>
+          </Field>
           <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
         </Modal>
       )}
@@ -1020,6 +1073,271 @@ function RestockModal({ item, onClose, onSave }) {
       <Field label="Note (optional)"><input className="focus-ring" style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
       <ModalActions onCancel={onClose} onSave={save} saveLabel="Add stock" />
     </Modal>
+  );
+}
+
+/* ---------------------------------------------------------------------- *
+ *  PURCHASES — vendors, purchase orders, and WhatsApp invoices.
+ * ---------------------------------------------------------------------- */
+function cleanPhoneForWhatsapp(phone) {
+  let digits = (phone || "").replace(/[^\d]/g, "");
+  if (digits.startsWith("0")) digits = "254" + digits.slice(1); // Kenyan local -> international
+  return digits;
+}
+
+function PurchasesView({ items, vendors, purchaseOrders, settings, update }) {
+  const [subTab, setSubTab] = useState("new");
+  const [invoiceFor, setInvoiceFor] = useState(null);
+
+  // --- Vendors ---
+  const [showVendorForm, setShowVendorForm] = useState(false);
+  const [editingVendor, setEditingVendor] = useState(null);
+  const [vendorForm, setVendorForm] = useState({ name: "", phone: "", address: "", notes: "" });
+
+  const openNewVendor = () => { setVendorForm({ name: "", phone: "", address: "", notes: "" }); setEditingVendor(null); setShowVendorForm(true); };
+  const openEditVendor = (v) => { setVendorForm({ name: v.name, phone: v.phone, address: v.address || "", notes: v.notes || "" }); setEditingVendor(v.id); setShowVendorForm(true); };
+  const saveVendor = async () => {
+    if (!vendorForm.name.trim() || !vendorForm.phone.trim()) return;
+    if (editingVendor) {
+      await update.vendors(vendors.map((v) => (v.id === editingVendor ? { ...v, ...vendorForm } : v)));
+    } else {
+      await update.vendors([...vendors, { id: uid(), ...vendorForm }]);
+    }
+    setShowVendorForm(false);
+  };
+  const removeVendor = async (id) => update.vendors(vendors.filter((v) => v.id !== id));
+
+  // --- New purchase order ---
+  const [vendorId, setVendorId] = useState("");
+  const [itemQuery, setItemQuery] = useState("");
+  const [poLines, setPoLines] = useState([]); // { itemId, itemName, qty, cost }
+  const [poNotes, setPoNotes] = useState("");
+  const [poError, setPoError] = useState("");
+
+  const itemMatches = itemQuery.trim()
+    ? items.filter((i) => i.active && i.name.toLowerCase().includes(itemQuery.trim().toLowerCase())).slice(0, 8)
+    : [];
+
+  const addLine = (item) => {
+    setItemQuery("");
+    setPoLines((prev) => {
+      if (prev.find((l) => l.itemId === item.id)) return prev;
+      return [...prev, { itemId: item.id, itemName: item.name, qty: 1, cost: item.buyingPrice }];
+    });
+  };
+  const updateLine = (itemId, patch) => setPoLines((prev) => prev.map((l) => (l.itemId === itemId ? { ...l, ...patch } : l)));
+  const removeLine = (itemId) => setPoLines((prev) => prev.filter((l) => l.itemId !== itemId));
+  const poTotal = poLines.reduce((s, l) => s + Number(l.qty || 0) * Number(l.cost || 0), 0);
+
+  const resetPoForm = () => { setVendorId(""); setPoLines([]); setPoNotes(""); setPoError(""); };
+
+  const createPO = async () => {
+    const vendor = vendors.find((v) => v.id === vendorId);
+    if (!vendor) { setPoError("Choose a vendor."); return; }
+    if (poLines.length === 0) { setPoError("Add at least one item."); return; }
+    setPoError("");
+    const lines = poLines.map((l) => ({ itemId: l.itemId, itemName: l.itemName, qty: Number(l.qty) || 0, cost: Number(l.cost) || 0, subtotal: (Number(l.qty) || 0) * (Number(l.cost) || 0) }));
+    const po = {
+      id: uid(),
+      poNumber: settings.nextPoNo,
+      vendorId: vendor.id,
+      vendorName: vendor.name,
+      vendorPhone: vendor.phone,
+      lines,
+      total: lines.reduce((s, l) => s + l.subtotal, 0),
+      notes: poNotes,
+      createdAt: new Date().toISOString(),
+    };
+    await update.purchaseOrders([...purchaseOrders, po]);
+    await update.settings({ ...settings, nextPoNo: settings.nextPoNo + 1 });
+    resetPoForm();
+    setInvoiceFor(po);
+  };
+
+  // --- Invoice: WhatsApp text + printable PDF ---
+  const invoiceText = (po) => {
+    const lines = po.lines.map((l) => `• ${l.itemName} — ${l.qty} x ${fmtKES(l.cost)} = ${fmtKES(l.subtotal)}`).join("\n");
+    return `*Purchase Order #${String(po.poNumber).padStart(4, "0")}*\n${settings.name}\n${settings.address || ""}\n\nTo: ${po.vendorName}\nDate: ${fmtDate(po.createdAt.slice(0, 10))}\n\n${lines}\n\n*Total: ${fmtKES(po.total)}*${po.notes ? `\n\nNote: ${po.notes}` : ""}`;
+  };
+
+  const sendViaWhatsapp = (po) => {
+    const phone = cleanPhoneForWhatsapp(po.vendorPhone);
+    const text = encodeURIComponent(invoiceText(po));
+    const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+    window.open(url, "_blank");
+  };
+
+  const printInvoice = (po) => {
+    const rows = po.lines.map((l) => `<tr><td>${l.itemName}</td><td style="text-align:right">${l.qty}</td><td style="text-align:right">${fmtKES(l.cost)}</td><td style="text-align:right">${fmtKES(l.subtotal)}</td></tr>`).join("");
+    const html = `<!doctype html><html><head><title>PO #${po.poNumber} - ${settings.name}</title>
+      <meta charset="utf-8" />
+      <style>
+        body { font-family: Arial, Helvetica, sans-serif; padding: 28px; color: #1a1a1a; }
+        h1 { font-size: 19px; margin: 0 0 2px; }
+        p.sub { font-size: 12px; color: #555; margin: 0 0 4px; }
+        .row { display: flex; justify-content: space-between; margin: 18px 0 14px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 7px 8px; text-align: left; }
+        th { background: #f3f3f3; }
+        .total { text-align: right; font-size: 14px; font-weight: 700; margin-top: 10px; }
+        @media print { @page { margin: 16mm; } }
+      </style>
+      </head><body>
+        <h1>${settings.name}</h1>
+        <p class="sub">${settings.address || ""}${settings.phone ? " · " + settings.phone : ""}</p>
+        <div class="row">
+          <div><strong>Purchase Order #${String(po.poNumber).padStart(4, "0")}</strong><br/>Date: ${fmtDate(po.createdAt.slice(0, 10))}</div>
+          <div style="text-align:right"><strong>Vendor</strong><br/>${po.vendorName}<br/>${po.vendorPhone || ""}</div>
+        </div>
+        <table>
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit cost</th><th>Subtotal</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <p class="total">Total: ${fmtKES(po.total)}</p>
+        ${po.notes ? `<p style="font-size:12px;color:#555;margin-top:12px;">Note: ${po.notes}</p>` : ""}
+      </body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) { alert("Please allow pop-ups to print the invoice."); return; }
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  };
+
+  return (
+    <div className="px-4 py-4">
+      <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800, marginBottom: 10 }}>Purchases</h2>
+
+      <div className="flex gap-2 mb-4">
+        {[{ id: "new", label: "New Order" }, { id: "history", label: "History" }, { id: "vendors", label: "Vendors" }].map((t) => (
+          <button key={t.id} onClick={() => setSubTab(t.id)} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: subTab === t.id ? INK : PANEL, color: subTab === t.id ? "#fff" : INK, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.label}</button>
+        ))}
+      </div>
+
+      {subTab === "vendors" && (
+        <>
+          <button onClick={openNewVendor} className="focus-ring flex items-center gap-1.5" style={{ marginBottom: 12, padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add vendor</button>
+          {vendors.length === 0 && <EmptyState text="No vendors yet." />}
+          {vendors.map((v) => (
+            <SectionCard key={v.id}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p style={{ fontWeight: 600, fontSize: 13.5 }}>{v.name}</p>
+                  <p style={{ fontSize: 11.5, color: SLATE, marginTop: 2 }}>{v.phone}</p>
+                  {v.address && <p style={{ fontSize: 11.5, color: SLATE, marginTop: 1 }}>{v.address}</p>}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => openEditVendor(v)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: SLATE, cursor: "pointer" }}><Pencil size={14} /></button>
+                  <button onClick={() => removeVendor(v.id)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: RED, cursor: "pointer" }}><Trash2 size={14} /></button>
+                </div>
+              </div>
+            </SectionCard>
+          ))}
+        </>
+      )}
+
+      {subTab === "new" && (
+        <>
+          <Field label="Vendor">
+            <select className="focus-ring" style={inputStyle} value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+              <option value="">Select a vendor…</option>
+              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+            </select>
+          </Field>
+          {vendors.length === 0 && <p style={{ fontSize: 11.5, color: SLATE, marginTop: -6, marginBottom: 12 }}>No vendors saved yet — add one in the Vendors tab first.</p>}
+
+          <div className="relative mb-3">
+            <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
+            <input value={itemQuery} onChange={(e) => setItemQuery(e.target.value)} placeholder="Search medicine to add to order…" className="focus-ring" style={{ ...inputStyle, paddingLeft: 32 }} />
+            {itemMatches.length > 0 && (
+              <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, maxHeight: 260, overflowY: "auto" }}>
+                {itemMatches.map((it) => (
+                  <button key={it.id} onClick={() => addLine(it)} className="focus-ring" style={{ width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderBottom: `1px solid ${LINE}`, background: "none", cursor: "pointer" }}>
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</span>
+                    <span style={{ fontSize: 10.5, color: SLATE, display: "block" }}>Usual buy price {fmtKES(it.buyingPrice)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {poLines.length === 0 && <EmptyState text="Search above to add items to this order." />}
+          {poLines.map((l) => (
+            <SectionCard key={l.itemId}>
+              <div className="flex items-center justify-between mb-2">
+                <p style={{ fontWeight: 600, fontSize: 13 }}>{l.itemName}</p>
+                <button onClick={() => removeLine(l.itemId)} className="focus-ring" style={{ padding: 4, background: "none", border: "none", color: RED, cursor: "pointer" }}><Trash2 size={14} /></button>
+              </div>
+              <div className="flex gap-3">
+                <Field label="Qty"><input type="number" min="1" className="focus-ring" style={inputStyle} value={l.qty} onChange={(e) => updateLine(l.itemId, { qty: e.target.value })} /></Field>
+                <Field label="Unit cost"><input type="number" className="focus-ring" style={inputStyle} value={l.cost} onChange={(e) => updateLine(l.itemId, { cost: e.target.value })} /></Field>
+              </div>
+              <p style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 700, textAlign: "right" }}>{fmtKES(Number(l.qty || 0) * Number(l.cost || 0))}</p>
+            </SectionCard>
+          ))}
+
+          {poLines.length > 0 && (
+            <>
+              <Field label="Note to vendor (optional)"><input className="focus-ring" style={inputStyle} value={poNotes} onChange={(e) => setPoNotes(e.target.value)} /></Field>
+              <div className="flex justify-between items-center" style={{ margin: "10px 0 14px" }}>
+                <span style={{ fontSize: 13, fontWeight: 700 }}>Total</span>
+                <span style={{ fontFamily: MONO_FONT, fontSize: 18, fontWeight: 800 }}>{fmtKES(poTotal)}</span>
+              </div>
+              {poError && <p style={{ fontSize: 12, color: RED, marginBottom: 10 }}>{poError}</p>}
+              <button onClick={createPO} className="focus-ring" style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: MARIGOLD, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 90 }}>Save & Prepare Invoice</button>
+            </>
+          )}
+        </>
+      )}
+
+      {subTab === "history" && (
+        <>
+          {purchaseOrders.length === 0 && <EmptyState text="No purchase orders yet." />}
+          {[...purchaseOrders].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((po) => (
+            <button key={po.id} onClick={() => setInvoiceFor(po)} className="focus-ring" style={{ width: "100%", textAlign: "left", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, marginBottom: 10, cursor: "pointer" }}>
+              <div className="flex justify-between">
+                <div>
+                  <p style={{ fontSize: 12.5, fontWeight: 600 }}>PO #{String(po.poNumber).padStart(4, "0")} · {po.vendorName}</p>
+                  <p style={{ fontSize: 11, color: SLATE, marginTop: 1 }}>{fmtDateTime(po.createdAt)} · {po.lines.length} items</p>
+                </div>
+                <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(po.total)}</p>
+              </div>
+            </button>
+          ))}
+        </>
+      )}
+
+      {showVendorForm && (
+        <Modal title={editingVendor ? "Edit vendor" : "Add vendor"} onClose={() => setShowVendorForm(false)}>
+          <Field label="Vendor / supplier name"><input className="focus-ring" style={inputStyle} value={vendorForm.name} onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })} /></Field>
+          <Field label="WhatsApp phone number"><input className="focus-ring" style={inputStyle} placeholder="e.g. 0712345678" value={vendorForm.phone} onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })} /></Field>
+          <Field label="Address (optional)"><input className="focus-ring" style={inputStyle} value={vendorForm.address} onChange={(e) => setVendorForm({ ...vendorForm, address: e.target.value })} /></Field>
+          <Field label="Notes (optional)"><input className="focus-ring" style={inputStyle} value={vendorForm.notes} onChange={(e) => setVendorForm({ ...vendorForm, notes: e.target.value })} /></Field>
+          <ModalActions onCancel={() => setShowVendorForm(false)} onSave={saveVendor} />
+        </Modal>
+      )}
+
+      {invoiceFor && (
+        <Modal title={`Purchase Order #${String(invoiceFor.poNumber).padStart(4, "0")}`} onClose={() => setInvoiceFor(null)}>
+          <p style={{ fontSize: 12.5, color: SLATE, marginBottom: 2 }}>To: <strong style={{ color: INK }}>{invoiceFor.vendorName}</strong> · {invoiceFor.vendorPhone}</p>
+          <p style={{ fontSize: 11.5, color: SLATE, marginBottom: 12 }}>{fmtDateTime(invoiceFor.createdAt)}</p>
+          {invoiceFor.lines.map((l) => (
+            <div key={l.itemId} className="flex justify-between" style={{ padding: "6px 0", borderBottom: `1px solid ${LINE}` }}>
+              <span style={{ fontSize: 12.5 }}>{l.itemName} <span style={{ color: SLATE }}>x{l.qty}</span></span>
+              <span style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 600 }}>{fmtKES(l.subtotal)}</span>
+            </div>
+          ))}
+          <div className="flex justify-between" style={{ marginTop: 10, marginBottom: 16 }}>
+            <span style={{ fontWeight: 700 }}>Total</span>
+            <span style={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: 15 }}>{fmtKES(invoiceFor.total)}</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => sendViaWhatsapp(invoiceFor)} className="focus-ring flex items-center justify-center gap-1.5" style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: "none", background: "#25D366", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}><MessageCircle size={16} /> WhatsApp</button>
+            <button onClick={() => printInvoice(invoiceFor)} className="focus-ring flex items-center justify-center gap-1.5" style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: `1px solid ${LINE}`, background: "#fff", color: INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}><Printer size={16} /> Print / PDF</button>
+          </div>
+        </Modal>
+      )}
+    </div>
   );
 }
 
