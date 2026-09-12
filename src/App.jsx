@@ -633,6 +633,11 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
               className="focus-ring"
               style={{ textAlign: "left", padding: 12, borderRadius: 12, border: `1px solid ${LINE}`, background: outOfStock ? "#F1EEE5" : PANEL, cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.6 : 1 }}
             >
+              {isItem && (
+                c.imageUrl
+                  ? <img src={c.imageUrl} alt="" style={{ width: "100%", height: 64, borderRadius: 8, objectFit: "cover", marginBottom: 8 }} />
+                  : <div style={{ width: "100%", height: 64, borderRadius: 8, background: PAPER, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={18} color="#C9C1AC" /></div>
+              )}
               <p style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.25, marginBottom: 6 }}>{c.name}</p>
               <p style={{ fontFamily: MONO_FONT, fontSize: 13.5, fontWeight: 700, color: MARIGOLD }}>{fmtKES(price)}</p>
               {isItem && <p style={{ fontSize: 10.5, color: isExpired ? RED : c.stockQty <= 0 ? RED : SLATE, marginTop: 2 }}>{isExpired ? "Expired" : c.stockQty <= 0 ? "Out of stock" : `${c.stockQty} in stock`}</p>}
@@ -1036,7 +1041,7 @@ function StockView({ items, update, restocks, settings }) {
               <div>
                 <label className="focus-ring" style={{ display: "inline-block", padding: "7px 12px", borderRadius: 8, border: `1px solid ${LINE}`, background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
                   {uploadingImage ? "Uploading…" : form.imageUrl ? "Change photo" : "Add photo"}
-                  <input type="file" accept="image/*" capture="environment" style={{ display: "none" }} disabled={uploadingImage} onChange={(e) => handleImagePick(e.target.files?.[0])} />
+                  <input type="file" accept="image/*" style={{ display: "none" }} disabled={uploadingImage} onChange={(e) => handleImagePick(e.target.files?.[0])} />
                 </label>
                 {form.imageUrl && !uploadingImage && (
                   <button type="button" onClick={() => setForm((f) => ({ ...f, imageUrl: "" }))} className="focus-ring" style={{ marginLeft: 8, fontSize: 11.5, color: RED, background: "none", border: "none", cursor: "pointer" }}>Remove</button>
