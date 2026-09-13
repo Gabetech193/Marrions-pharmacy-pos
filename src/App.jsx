@@ -562,7 +562,16 @@ function NewSale({ services, items, session, completeSale, showReceipt }) {
   };
 
   return (
-    <div className="px-4 py-4">
+    <div
+      className="px-4 py-4"
+      style={{
+        backgroundImage: `linear-gradient(rgba(250,248,243,0.94), rgba(250,248,243,0.94)), url(/pharmacy-bg.jpg)`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+        minHeight: "100%",
+      }}
+    >
       {showScanner && <BarcodeScannerModal onDetect={handleScan} onClose={() => setShowScanner(false)} />}
 
       <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", marginBottom: 6 }}>Quick add medicine</p>
@@ -765,7 +774,16 @@ function Dashboard({ sales, expenses, items }) {
   const expiringSoon = items.filter((i) => i.active && i.expiryDate && daysUntil(i.expiryDate) >= 0 && daysUntil(i.expiryDate) <= 30);
 
   return (
-    <div className="px-4 py-4">
+    <div
+      className="px-4 py-4"
+      style={{
+        backgroundImage: `linear-gradient(rgba(250,248,243,0.94), rgba(250,248,243,0.94)), url(/pharmacy-bg.jpg)`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+        minHeight: "100%",
+      }}
+    >
       <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 800, marginBottom: 2 }}>Today</h2>
       <p style={{ fontSize: 12, color: SLATE, marginBottom: 12 }}>{fmtDate(today)}</p>
 
