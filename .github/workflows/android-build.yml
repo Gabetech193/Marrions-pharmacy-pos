@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          
+
       - name: Setup JDK
         uses: actions/setup-java@v4
         with:
@@ -34,7 +34,7 @@ jobs:
           npm install @capacitor/core @capacitor/android
           npm install -D @capacitor/cli
 
-      - name: Init Capacitor (if not already configured)
+      - name: Init Capacitor
         run: |
           if [ ! -d "android" ]; then
             npx cap add android
