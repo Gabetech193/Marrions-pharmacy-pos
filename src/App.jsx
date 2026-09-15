@@ -1,136 +1,124 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
-  LayoutDashboard, ShoppingCart, Wrench,
-  BarChart3, Users, Settings as SettingsIcon, LogOut, Plus, Minus, X,
-  Trash2, Pencil, Search, AlertTriangle, Printer, ArrowLeft, Check,
-  Wallet, Lock, Boxes, ClipboardList, Camera, Truck, MessageCircle,
-  ImagePlus, Building2, FileText
+  Users, Calendar, Wallet, Megaphone, LogOut, Plus, Trash2, Pencil,
+  X, Check, ChevronRight, Circle, Settings as SettingsIcon,
+  Phone, CreditCard, HeartHandshake, Clock, AlertCircle, KeyRound,
+  ClipboardCheck, FileText, MessageSquare, Printer, UserCheck, UserX,
+  Coins, LayoutDashboard, TrendingUp, HandCoins, Gift, CalendarDays, Bell, ArrowUpRight
 } from "lucide-react";
-import { BrowserMultiFormatReader } from "@zxing/browser";
-import { db } from "./db";
+import {
+  listTable, addRow, updateRowById, deleteRowById,
+  fetchSettings, updateSettings, fetchAttendance, saveAttendanceForEvent, deleteRepaymentsForLoan
+} from "./supabaseClient";
 
-/* ---------------------------------------------------------------------- *
- *  THEME — a working shop counter, not a showcase. Ink-blue chrome, warm
- *  paper background, a marigold accent for the actions that move money
- *  (complete sale, totals). Amounts render in a mono face throughout, the
- *  way they would on a receipt or ledger.
- * ---------------------------------------------------------------------- */
-const INK = "#152233";
-const INK_SOFT = "#22344A";
-const PAPER = "#FAF8F3";
-const PANEL = "#FFFFFF";
-const LINE = "#E7E1D3";
-const MARIGOLD = "#E29A2E";
-const GREEN = "#2F9E58";
-const RED = "#C1442E";
-const SLATE = "#5B6472";
-const BODY_FONT = "'Inter', system-ui, sans-serif";
-const MONO_FONT = "'IBM Plex Mono', 'Courier New', monospace";
-const DISPLAY_FONT = "'Inter', system-ui, sans-serif";
-
-const GLOBAL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
-* { box-sizing: border-box; }
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-thumb { background: #DCD5C2; border-radius: 8px; }
-button { font-family: inherit; }
-.focus-ring:focus-visible { outline: 2px solid ${MARIGOLD}; outline-offset: 2px; }
-@media print {
-  body * { visibility: hidden; }
-  #receipt-print, #receipt-print * { visibility: visible; }
-  #receipt-print { position: absolute; top: 0; left: 0; width: 100%; }
-}
-`;
-
-const LOGO_DATA_URI = "data:image/jpeg;base64,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";
+const TEAL = "#164B47";
+const TEAL_DARK = "#0D302D";
+const GOLD = "#C99A2E";
+const CREAM = "#FBF7EF";
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const fmtKES = (n) => `KSh ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+const monthKey = (dateStr) => (dateStr || todayISO()).slice(0, 7);
+const fmtKES = (n) => `Ksh ${Number(n || 0).toLocaleString()}`;
 const fmtDate = (d) => {
   if (!d) return "";
-  const dt = typeof d === "string" && d.length === 10 ? new Date(d + "T00:00:00") : new Date(d);
-  return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-};
-const fmtDateTime = (iso) => new Date(iso).toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-const inRange = (iso, from, to) => {
-  const d = iso.slice(0, 10);
-  return d >= from && d <= to;
+  const dt = new Date(d + "T00:00:00");
+  return dt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 };
 const daysUntil = (dateStr) => {
   if (!dateStr) return null;
-  const ms = new Date(dateStr + "T00:00:00") - new Date(todayISO() + "T00:00:00");
-  return Math.round(ms / 86400000);
+  const today = new Date(todayISO() + "T00:00:00");
+  const due = new Date(dateStr + "T00:00:00");
+  return Math.round((due - today) / 86400000);
 };
+const loanDueState = (loan) => {
+  if (loan.status === "repaid" || loan.actual_return_date) return { key: "repaid", label: "Fully repaid", color: TEAL };
+  if (!loan.due_date) return { key: "no_due_date", label: "No due date", color: "#8A8270" };
+  const days = daysUntil(loan.due_date);
+  if (days < 0) return { key: "overdue", label: `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? "" : "s"}`, color: "#B3391F" };
+  if (days === 0) return { key: "due_today", label: "Due today", color: "#B3391F" };
+  if (days <= 7) return { key: "due_soon", label: `Due in ${days} day${days === 1 ? "" : "s"}`, color: GOLD };
+  return { key: "active", label: "Outstanding", color: TEAL };
+};
+const loanDueMessage = (loan) => `Your loan is due on ${fmtDate(loan.due_date)} kindly pay up to avoid penalties.`;
 
-const PAYMENT_METHODS = ["Cash", "M-Pesa", "Card", "Other"];
-const DEFAULT_SERVICES = [
-  { id: uid(), name: "Consultation", price: 100, active: true },
-  { id: uid(), name: "Blood Pressure Check", price: 50, active: true },
-  { id: uid(), name: "Blood Sugar Test", price: 100, active: true },
-  { id: uid(), name: "Malaria Test", price: 100, active: true },
-  { id: uid(), name: "Injection Administration", price: 100, active: true },
-  { id: uid(), name: "Wound Dressing", price: 150, active: true },
-  { id: uid(), name: "Nebulization", price: 200, active: true },
-  { id: uid(), name: "Weight Check", price: 20, active: true },
-  { id: uid(), name: "Home Delivery", price: 200, active: true },
+function smsLink(phones, message) {
+  const nums = phones.filter(Boolean).join(",");
+  return `sms:${nums}?&body=${encodeURIComponent(message)}`;
+}
+
+// Table banking balance = money contributed to that fund, plus everything
+// repaid on loans (principal + interest), minus principal currently out on
+// loan. Interest collected on repayment stays in the fund as growth.
+function tableBankingBalance(contributions, loans, loanRepayments) {
+  const contributed = contributions.filter((c) => c.type === "tableBanking").reduce((s, c) => s + Number(c.amount), 0);
+  const repaid = loanRepayments.reduce((s, r) => s + Number(r.amount), 0);
+  const lent = loans.reduce((s, l) => s + Number(l.principal), 0);
+  return contributed + repaid - lent;
+}
+
+const CONTRIB_TYPES = [
+  { key: "monthly", label: "Monthly Share", settingCol: "monthly" },
+  { key: "merryGoRound", label: "Merry-Go-Round", settingCol: "merry_go_round" },
+  { key: "benevolent", label: "Benevolent Fund", settingCol: "benevolent" },
+  { key: "tableBanking", label: "Table Banking", settingCol: "table_banking" },
 ];
-const DEFAULT_ITEMS = [
-  { id: uid(), name: "Paracetamol 500mg (10 tabs)", buyingPrice: 15, sellingPrice: 30, stockQty: 100, reorderLevel: 20, expiryDate: "2027-06-30", active: true },
-  { id: uid(), name: "Amoxicillin 500mg (10 caps)", buyingPrice: 60, sellingPrice: 120, stockQty: 40, reorderLevel: 10, expiryDate: "2027-03-31", active: true },
-  { id: uid(), name: "Coartem (Artemether/Lumefantrine)", buyingPrice: 150, sellingPrice: 280, stockQty: 30, reorderLevel: 8, expiryDate: "2027-01-31", active: true },
-  { id: uid(), name: "ORS Sachet", buyingPrice: 15, sellingPrice: 30, stockQty: 60, reorderLevel: 15, expiryDate: "2027-08-31", active: true },
-  { id: uid(), name: "Cough Syrup 100ml", buyingPrice: 80, sellingPrice: 150, stockQty: 25, reorderLevel: 8, expiryDate: "2026-12-31", active: true },
-  { id: uid(), name: "Antacid Suspension 200ml", buyingPrice: 100, sellingPrice: 180, stockQty: 20, reorderLevel: 6, expiryDate: "2027-05-31", active: true },
-  { id: uid(), name: "Vitamin C Tablets", buyingPrice: 50, sellingPrice: 100, stockQty: 35, reorderLevel: 10, expiryDate: "2028-01-31", active: true },
-  { id: uid(), name: "Multivitamins", buyingPrice: 120, sellingPrice: 220, stockQty: 20, reorderLevel: 6, expiryDate: "2027-11-30", active: true },
-  { id: uid(), name: "Diclofenac Gel", buyingPrice: 90, sellingPrice: 160, stockQty: 15, reorderLevel: 5, expiryDate: "2027-04-30", active: true },
-  { id: uid(), name: "Antiseptic (Dettol) 100ml", buyingPrice: 60, sellingPrice: 110, stockQty: 25, reorderLevel: 8, expiryDate: "2028-06-30", active: true },
-  { id: uid(), name: "Cotton Wool", buyingPrice: 40, sellingPrice: 80, stockQty: 20, reorderLevel: 5, expiryDate: "", active: true },
-  { id: uid(), name: "Bandage Roll", buyingPrice: 30, sellingPrice: 60, stockQty: 30, reorderLevel: 8, expiryDate: "", active: true },
-  { id: uid(), name: "Surgical Gloves (pair)", buyingPrice: 10, sellingPrice: 20, stockQty: 100, reorderLevel: 20, expiryDate: "2028-02-28", active: true },
-  { id: uid(), name: "Face Mask", buyingPrice: 5, sellingPrice: 15, stockQty: 150, reorderLevel: 30, expiryDate: "", active: true },
-  { id: uid(), name: "Hand Sanitizer 100ml", buyingPrice: 50, sellingPrice: 100, stockQty: 30, reorderLevel: 8, expiryDate: "2027-09-30", active: true },
-];
-const DEFAULT_USERS = [
-  { id: uid(), name: "Admin", pin: "1234", role: "Administrator" },
-  { id: uid(), name: "Cashier", pin: "0000", role: "Cashier" },
-];
-const DEFAULT_SETTINGS = {
-  name: "Marrions Pharmacy", address: "P.O. Box 15 Kamakuywa", phone: "", receiptFooter: "Thank you for your business! Get well soon.", nextReceiptNo: 100, nextPoNo: 1,
-};
+const typeToSettingCol = (type) => CONTRIB_TYPES.find((t) => t.key === type)?.settingCol;
 
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-  const [settings, setSettingsState] = useState(DEFAULT_SETTINGS);
-  const [users, setUsersState] = useState([]);
-  const [services, setServicesState] = useState([]);
-  const [items, setItemsState] = useState([]);
-  const [sales, setSalesState] = useState([]);
-  const [expenses, setExpensesState] = useState([]);
-  const [restocks, setRestocksState] = useState([]);
-  const [vendors, setVendorsState] = useState([]);
-  const [purchaseOrders, setPurchaseOrdersState] = useState([]);
+  const [loadError, setLoadError] = useState("");
+  const [accounts, setAccounts] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [contributions, setContributions] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [settings, setSettings] = useState(null);
+  const [attendance, setAttendanceState] = useState({});
+  const [minutes, setMinutesState] = useState([]);
+  const [loans, setLoansState] = useState([]);
+  const [loanRepayments, setLoanRepaymentsState] = useState([]);
+  const [interestRounds, setInterestRounds] = useState([]);
+  const [interestDistributions, setInterestDistributions] = useState([]);
   const [session, setSession] = useState(null);
-  const [tab, setTab] = useState("sale");
-  const [receipt, setReceipt] = useState(null);
+  const [tab, setTab] = useState("dashboard");
+  const [showPwModal, setShowPwModal] = useState(false);
 
+  const loadAppData = async () => {
+    const [mem, ev, con, ann, set, att, min, ln, lr, ir, idist] = await Promise.all([
+      listTable("members"),
+      listTable("events"),
+      listTable("contributions"),
+      listTable("announcements"),
+      fetchSettings(),
+      fetchAttendance(),
+      listTable("minutes"),
+      listTable("loans"),
+      listTable("loan_repayments"),
+      listTable("interest_rounds"),
+      listTable("interest_distributions"),
+    ]);
+    setMembers(mem);
+    setEvents(ev);
+    setContributions(con);
+    setAnnouncements(ann);
+    setSettings(set);
+    setAttendanceState(att);
+    setMinutesState(min);
+    setLoansState(ln);
+    setLoanRepaymentsState(lr);
+    setInterestRounds(ir);
+    setInterestDistributions(idist);
+  };
+
+  // Load only the accounts needed for login first. Financial/member data is
+  // fetched only after a successful login, reducing unnecessary exposure.
   useEffect(() => {
     (async () => {
       try {
-        const all = await db.loadAll();
-        setSettingsState(all.settings);
-        setUsersState(all.users);
-        setServicesState(all.services);
-        setItemsState(all.items);
-        setSalesState(all.sales);
-        setExpensesState(all.expenses);
-        setRestocksState(all.restocks);
-        setVendorsState(all.vendors);
-        setPurchaseOrdersState(all.purchaseOrders);
+        const acc = await listTable("accounts");
+        setAccounts(acc);
       } catch (e) {
-        console.error("Failed to load from Supabase", e);
         setLoadError(e.message || "Could not connect to the database.");
       } finally {
         setLoading(false);
@@ -138,82 +126,162 @@ export default function App() {
     })();
   }, []);
 
-  // Every update still replaces the whole in-memory array (as before) and
-  // then syncs that same array to Supabase, so the rest of the app's logic
-  // is unchanged — only where the data lives is different.
   const update = {
-    settings: async (next) => { setSettingsState(next); await db.saveSettings(next); },
-    users: async (next) => { setUsersState(next); await db.saveUsers(next); },
-    services: async (next) => { setServicesState(next); await db.saveServices(next); },
-    items: async (next) => { setItemsState(next); await db.saveItems(next); },
-    sales: async (next) => { setSalesState(next); await db.saveSales(next); },
-    expenses: async (next) => { setExpensesState(next); await db.saveExpenses(next); },
-    restocks: async (next) => { setRestocksState(next); await db.saveRestocks(next); },
-    vendors: async (next) => { setVendorsState(next); await db.saveVendors(next); },
-    purchaseOrders: async (next) => { setPurchaseOrdersState(next); await db.savePurchaseOrders(next); },
+    accounts: {
+      add: async (row) => setAccounts((s) => [...s, ...[]].concat()), // placeholder not used directly
+    },
   };
 
-  const isAdmin = session?.role === "Administrator";
+  // Simple CRUD helpers exposed to children
+  const crud = {
+    addMember: async (row) => { const r = await addRow("members", row); setMembers((s) => [...s, r]); return r; },
+    updateMember: async (id, patch) => { const r = await updateRowById("members", id, patch); setMembers((s) => s.map((m) => (m.id === id ? r : m))); return r; },
+    removeMember: async (id) => { await deleteRowById("members", id); setMembers((s) => s.filter((m) => m.id !== id)); setAccounts((s) => s.filter((a) => a.member_id !== id)); },
 
-  const completeSale = async (cartLines, paymentMethod) => {
-    // Re-check stock against the freshest numbers right before committing.
-    for (const line of cartLines) {
-      if (line.kind === "item") {
-        const current = items.find((i) => i.id === line.refId);
-        if (!current || current.stockQty < line.qty) {
-          throw new Error(`Not enough stock for ${line.name} (only ${current ? current.stockQty : 0} left).`);
+    addAccount: async (row) => { const r = await addRow("accounts", row); setAccounts((s) => [...s, r]); return r; },
+    updateAccount: async (id, patch) => { const r = await updateRowById("accounts", id, patch); setAccounts((s) => s.map((a) => (a.id === id ? r : a))); return r; },
+
+    addEvent: async (row) => { const r = await addRow("events", row); setEvents((s) => [...s, r]); return r; },
+    removeEvent: async (id) => { await deleteRowById("events", id); setEvents((s) => s.filter((e) => e.id !== id)); },
+
+    addContribution: async (row) => { const r = await addRow("contributions", row); setContributions((s) => [...s, r]); return r; },
+    removeContribution: async (id) => { await deleteRowById("contributions", id); setContributions((s) => s.filter((c) => c.id !== id)); },
+    addInterestRound: async (round, shares) => {
+      const created = await addRow("interest_rounds", round);
+      try {
+        const rows = shares.map((s) => ({ ...s, round_id: created.id }));
+        if (rows.length > 0) {
+          // Insert all member snapshots for this round.
+          const inserted = [];
+          for (const row of rows) inserted.push(await addRow("interest_distributions", row));
+          setInterestRounds((s) => [...s, created]);
+          setInterestDistributions((s) => [...s, ...inserted]);
+        } else {
+          setInterestRounds((s) => [...s, created]);
         }
+        return created;
+      } catch (e) {
+        try { await deleteRowById("interest_rounds", created.id); } catch {}
+        throw e;
       }
-    }
-    const total = cartLines.reduce((s, l) => s + l.subtotal, 0);
-    const receiptNo = settings.nextReceiptNo;
-    const sale = {
-      id: uid(), receiptNo, cashierId: session.id, cashierName: session.name,
-      paymentMethod, total, lines: cartLines, createdAt: new Date().toISOString(),
-    };
-    const nextItems = items.map((i) => {
-      const line = cartLines.find((l) => l.kind === "item" && l.refId === i.id);
-      return line ? { ...i, stockQty: i.stockQty - line.qty } : i;
-    });
-    await update.items(nextItems);
-    await update.sales([...sales, sale]);
-    await update.settings({ ...settings, nextReceiptNo: receiptNo + 1 });
-    setReceipt(sale);
-    return sale;
-  };
+    },
+    removeInterestRound: async (id) => {
+      if (!window.confirm("Delete this interest distribution round? This cannot be undone.")) return;
+      const rows = interestDistributions.filter((d) => d.round_id === id);
+      for (const row of rows) { try { await deleteRowById("interest_distributions", row.id); } catch {} }
+      await deleteRowById("interest_rounds", id);
+      setInterestDistributions((s) => s.filter((d) => d.round_id !== id));
+      setInterestRounds((s) => s.filter((r) => r.id !== id));
+    },
 
-  // Deleting a sale restores any stock it took out, then removes the record.
-  const deleteSale = async (saleId) => {
-    const sale = sales.find((s) => s.id === saleId);
-    if (!sale) return;
-    const nextItems = items.map((i) => {
-      const line = sale.lines.find((l) => l.kind === "item" && l.refId === i.id);
-      return line ? { ...i, stockQty: i.stockQty + line.qty } : i;
-    });
-    await update.items(nextItems);
-    await update.sales(sales.filter((s) => s.id !== saleId));
+    addAnnouncement: async (row) => { const r = await addRow("announcements", row); setAnnouncements((s) => [...s, r]); return r; },
+    removeAnnouncement: async (id) => { await deleteRowById("announcements", id); setAnnouncements((s) => s.filter((a) => a.id !== id)); },
+
+    addMinutes: async (row) => { const r = await addRow("minutes", row); setMinutesState((s) => [...s, r]); return r; },
+    removeMinutes: async (id) => { await deleteRowById("minutes", id); setMinutesState((s) => s.filter((m) => m.id !== id)); },
+
+    // Loans are validated again against fresh database data immediately
+    // before writing, so an old browser state is less likely to approve an
+    // unsafe loan.
+    addLoan: async ({ member_id, principal, interest_rate, note, date_borrowed, due_date }) => {
+      const amount = Number(principal);
+      const rate = Number(interest_rate);
+      if (!member_id) throw new Error("Select a member.");
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error("Enter a valid loan amount greater than zero.");
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100) throw new Error("Interest rate must be between 0% and 100%.");
+
+      const [freshContributions, freshLoans, freshRepayments] = await Promise.all([
+        listTable("contributions"),
+        listTable("loans"),
+        listTable("loan_repayments"),
+      listTable("interest_rounds"),
+      listTable("interest_distributions"),
+      ]);
+      const available = Math.max(0, tableBankingBalance(freshContributions, freshLoans, freshRepayments));
+      if (amount > available) {
+        throw new Error(`Not enough money in the table banking fund. Available: ${fmtKES(available)}.`);
+      }
+
+      const interestAmount = Math.round(amount * (rate / 100) * 100) / 100;
+      const row = {
+        member_id,
+        principal: amount,
+        interest_rate: rate,
+        interest_amount: interestAmount,
+        total_due: Math.round((amount + interestAmount) * 100) / 100,
+        amount_repaid: 0,
+        status: "outstanding",
+        date_borrowed: date_borrowed || todayISO(),
+        due_date: due_date || null,
+        actual_return_date: null,
+        note: note?.trim() || null,
+      };
+      const r = await addRow("loans", row);
+      setLoansState((s) => [...s, r]);
+      return r;
+    },
+    removeLoan: async (id) => {
+      if (!window.confirm("Delete this loan and its repayment history? This cannot be undone.")) return;
+      // Remove child repayment rows first so this works whether or not the
+      // database foreign key is configured with ON DELETE CASCADE.
+      await deleteRepaymentsForLoan(id);
+      await deleteRowById("loans", id);
+      setLoansState((s) => s.filter((l) => l.id !== id));
+      setLoanRepaymentsState((s) => s.filter((r) => r.loan_id !== id));
+    },
+    addRepayment: async (loanId, amount) => {
+      const payment = Number(amount);
+      const current = loans.find((l) => l.id === loanId);
+      if (!current) throw new Error("Loan could not be found. Refresh the page and try again.");
+      const remaining = Math.max(0, Number(current.total_due) - Number(current.amount_repaid));
+      if (!Number.isFinite(payment) || payment <= 0) throw new Error("Enter a valid repayment amount greater than zero.");
+      if (payment > remaining + 0.000001) throw new Error(`Repayment cannot exceed the remaining balance of ${fmtKES(remaining)}.`);
+
+      const r = await addRow("loan_repayments", { loan_id: loanId, amount: payment, date: todayISO() });
+      const newRepaid = Math.min(Number(current.total_due), Number(current.amount_repaid) + payment);
+      try {
+        const updated = await updateRowById("loans", loanId, {
+          amount_repaid: newRepaid,
+          status: newRepaid >= Number(current.total_due) ? "repaid" : "outstanding",
+          actual_return_date: newRepaid >= Number(current.total_due) ? todayISO() : null,
+        });
+        setLoanRepaymentsState((s) => [...s, r]);
+        setLoansState((s) => s.map((l) => (l.id === loanId ? updated : l)));
+        return r;
+      } catch (e) {
+        // Best-effort rollback of the repayment if the loan update fails.
+        try { await deleteRowById("loan_repayments", r.id); } catch {}
+        throw e;
+      }
+    },
+
+    saveSettings: async (patch) => { const r = await updateSettings(patch); setSettings(r); return r; },
+
+    saveAttendance: async (eventId, recMap) => {
+      await saveAttendanceForEvent(eventId, recMap);
+      setAttendanceState((prev) => ({ ...prev, [eventId]: recMap }));
+    },
   };
 
   if (loading) {
     return (
-      <div style={{ background: PAPER, minHeight: "100vh" }} className="flex items-center justify-center">
-        <style>{GLOBAL_CSS}</style>
-        <p style={{ color: SLATE, fontSize: 13.5 }}>Loading Marrions Pharmacy…</p>
+      <div style={{ background: CREAM }} className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-full border-4 animate-spin" style={{ borderColor: TEAL, borderTopColor: "transparent" }} />
+          <p className="text-sm" style={{ color: TEAL_DARK }}>Loading Matayia's Welfare…</p>
+        </div>
       </div>
     );
   }
 
   if (loadError) {
     return (
-      <div style={{ background: PAPER, minHeight: "100vh" }} className="flex items-center justify-center px-6">
-        <style>{GLOBAL_CSS}</style>
-        <div style={{ maxWidth: 380, textAlign: "center" }}>
-          <AlertTriangle size={28} color={RED} style={{ marginBottom: 10 }} />
-          <p style={{ fontWeight: 700, marginBottom: 6 }}>Couldn't connect to the database</p>
-          <p style={{ color: SLATE, fontSize: 13 }}>{loadError}</p>
-          <p style={{ color: SLATE, fontSize: 12, marginTop: 10 }}>
-            Check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set correctly.
-          </p>
+      <div style={{ background: CREAM }} className="min-h-screen flex items-center justify-center px-6">
+        <div className="max-w-sm text-center">
+          <AlertCircle size={28} color="#B3391F" className="mx-auto mb-3" />
+          <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Could not connect</p>
+          <p className="text-xs mt-2" style={{ color: "#7A7364" }}>{loadError}</p>
+          <p className="text-xs mt-3" style={{ color: "#7A7364" }}>Check that VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are set correctly in your environment.</p>
         </div>
       </div>
     );
@@ -221,1410 +289,752 @@ export default function App() {
 
   if (!session) {
     return (
-      <div style={{ background: PAPER, minHeight: "100vh" }}>
-        <style>{GLOBAL_CSS}</style>
-        <LoginScreen users={users} settings={settings} onLogin={(u) => { setSession(u); setTab(u.role === "Administrator" ? "dashboard" : "sale"); }} />
-      </div>
+      <LoginScreen
+        accounts={accounts}
+        onLogin={async (acc) => {
+          try {
+            setLoading(true);
+            setLoadError("");
+            await loadAppData();
+            setSession(acc);
+            setTab(acc.role === "admin" ? "dashboard" : "home");
+          } catch (e) {
+            setLoadError(e.message || "Could not load welfare data.");
+          } finally {
+            setLoading(false);
+          }
+        }}
+      />
     );
   }
 
-  const ctx = {
-    session, isAdmin, settings, users, services, items, sales, expenses, restocks, vendors, purchaseOrders,
-    update, completeSale, deleteSale, showReceipt: setReceipt,
-  };
-
   return (
-    <div style={{ background: PAPER, minHeight: "100vh", color: INK, fontFamily: BODY_FONT }}>
-      <style>{GLOBAL_CSS}</style>
-      <Shell session={session} isAdmin={isAdmin} tab={tab} setTab={setTab} settings={settings} onLogout={() => setSession(null)}>
-        {tab === "dashboard" && isAdmin && <Dashboard {...ctx} />}
-        {tab === "sale" && <NewSale {...ctx} />}
-        {tab === "mysales" && !isAdmin && <MySalesView {...ctx} />}
-        {tab === "services" && isAdmin && <ServicesView {...ctx} />}
-        {tab === "stock" && isAdmin && <StockView {...ctx} />}
-        {tab === "purchases" && isAdmin && <PurchasesView {...ctx} />}
-        {tab === "expenses" && isAdmin && <ExpensesView {...ctx} />}
-        {tab === "reports" && isAdmin && <ReportsView {...ctx} />}
-        {tab === "users" && isAdmin && <UsersView {...ctx} />}
-        {tab === "settings" && isAdmin && <SettingsView {...ctx} />}
-      </Shell>
-      {receipt && <ReceiptModal sale={receipt} settings={settings} onClose={() => setReceipt(null)} />}
-    </div>
+    <Shell session={session} onLogout={() => setSession(null)} tab={tab} setTab={setTab} onChangePassword={() => setShowPwModal(true)}>
+      {tab === "home" && (
+        <MemberHome session={session} members={members} contributions={contributions} events={events} announcements={announcements} loans={loans} interestRounds={interestRounds} interestDistributions={interestDistributions} />
+      )}
+      {tab === "dashboard" && session.role === "admin" && (
+        <AdminDashboard
+          members={members}
+          contributions={contributions}
+          loans={loans}
+          loanRepayments={loanRepayments}
+          events={events}
+          announcements={announcements}
+          settings={settings}
+          setTab={setTab}
+        />
+      )}
+      {tab === "members" && session.role === "admin" && (
+        <MembersTab members={members} accounts={accounts} crud={crud} />
+      )}
+      {tab === "events" && (
+        <EventsTab events={events} isAdmin={session.role === "admin"} members={members} attendance={attendance} crud={crud} />
+      )}
+      {tab === "contributions" && (
+        <ContributionsTab session={session} members={members} contributions={contributions} settings={settings} crud={crud} />
+      )}
+      {tab === "interest" && (
+        <InterestSharingTab session={session} members={members} contributions={contributions} interestRounds={interestRounds} interestDistributions={interestDistributions} crud={crud} />
+      )}
+      {tab === "loans" && (
+        <LoansTab session={session} members={members} loans={loans} loanRepayments={loanRepayments} contributions={contributions} settings={settings} crud={crud} />
+      )}
+      {tab === "announcements" && (
+        <AnnouncementsTab announcements={announcements} isAdmin={session.role === "admin"} members={members} crud={crud} />
+      )}
+      {tab === "minutes" && (
+        <MinutesTab minutes={minutes} isAdmin={session.role === "admin"} crud={crud} />
+      )}
+      {tab === "settings" && session.role === "admin" && (
+        <SettingsTab settings={settings} crud={crud} />
+      )}
+      {showPwModal && (
+        <ChangePasswordModal session={session} accounts={accounts} crud={crud} onClose={() => setShowPwModal(false)} />
+      )}
+    </Shell>
   );
 }
 
-/* ---------------------------------------------------------------------- *
- *  LOGIN — tap your name, enter your PIN. This is an in-app access gate
- *  only (there's no real backend yet), so it stops accidental taps, not a
- *  determined intruder. Good enough for a shared till; swap for real
- *  accounts once this moves onto a proper database.
- * ---------------------------------------------------------------------- */
-function LoginScreen({ users, settings, onLogin }) {
-  const [selected, setSelected] = useState(null);
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState("");
-
-  const press = (d) => {
-    if (pin.length >= 6) return;
-    setError("");
-    setPin((p) => p + d);
-  };
-  const backspace = () => setPin((p) => p.slice(0, -1));
+function LoginScreen({ accounts, onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState("");
 
   const submit = () => {
-    if (selected.pin === pin) { onLogin(selected); }
-    else { setError("Incorrect PIN."); setPin(""); }
+    const acc = accounts.find(
+      (a) => a.username.toLowerCase() === username.trim().toLowerCase() && a.password === password
+    );
+    if (!acc) { setErr("Incorrect username or password."); return; }
+    onLogin(acc);
   };
 
-  if (!selected) {
-    return (
-      <div className="flex flex-col items-center justify-center px-6" style={{ minHeight: "100vh" }}>
-        <img src={LOGO_DATA_URI} alt="Marrions Pharmacy" style={{ width: 88, height: 88, borderRadius: "50%", objectFit: "cover", marginBottom: 14, boxShadow: "0 4px 14px rgba(0,0,0,.12)" }} />
-        <h1 style={{ fontFamily: DISPLAY_FONT, fontSize: 21, fontWeight: 800, textAlign: "center" }}>{settings.name}</h1>
-        <p style={{ fontSize: 12.5, color: SLATE, marginBottom: 26 }}>{settings.address}</p>
-        <p style={{ fontSize: 12, color: SLATE, marginBottom: 12, fontWeight: 600 }}>Who's on the till?</p>
-        <div className="flex flex-col gap-2" style={{ width: 300, maxWidth: "100%" }}>
-          {users.map((u) => (
-            <button key={u.id} onClick={() => setSelected(u)} className="focus-ring flex items-center gap-3" style={{ padding: "12px 16px", borderRadius: 12, border: `1px solid ${LINE}`, background: PANEL, cursor: "pointer", textAlign: "left" }}>
-              <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#EFE3C8", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: INK, flexShrink: 0 }}>
-                {u.name.slice(0, 2).toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{u.name}</div>
-                <div style={{ fontSize: 11.5, color: SLATE }}>{u.role}</div>
-              </div>
-            </button>
-          ))}
+  return (
+    <div style={{ background: TEAL_DARK }} className="min-h-screen flex flex-col items-center justify-center px-6 py-10">
+      <div className="w-full max-w-sm">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: `conic-gradient(${GOLD} 0deg 120deg, #ffffff22 120deg 360deg)` }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: TEAL_DARK }}>
+              <HeartHandshake size={22} color={GOLD} />
+            </div>
+          </div>
+          <h1 className="text-xl font-semibold text-center" style={{ color: CREAM }}>Matayia's Welfare</h1>
+          <p className="text-xs mt-1" style={{ color: "#B9CFC9" }}>Together we stand, together we grow</p>
         </div>
-      </div>
-    );
-  }
 
-  return (
-    <div className="flex flex-col items-center justify-center px-6" style={{ minHeight: "100vh" }}>
-      <button onClick={() => { setSelected(null); setPin(""); setError(""); }} className="focus-ring flex items-center gap-1" style={{ position: "absolute", top: 20, left: 20, background: "none", border: "none", color: SLATE, fontSize: 13, cursor: "pointer" }}>
-        <ArrowLeft size={15} /> Back
-      </button>
-      <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#EFE3C8", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, color: INK, marginBottom: 10 }}>
-        {selected.name.slice(0, 2).toUpperCase()}
-      </div>
-      <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{selected.name}</p>
-      <p style={{ fontSize: 11.5, color: SLATE, marginBottom: 20 }}>Enter your PIN</p>
-      <div className="flex gap-2.5 mb-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} style={{ width: 14, height: 14, borderRadius: "50%", background: i < pin.length ? INK : "#E7E1D3" }} />
-        ))}
-      </div>
-      {error && <p style={{ fontSize: 12, color: RED, marginBottom: 10 }}>{error}</p>}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 64px)", gap: 12 }}>
-        {["1","2","3","4","5","6","7","8","9"].map((d) => (
-          <button key={d} onClick={() => press(d)} className="focus-ring" style={{ width: 64, height: 64, borderRadius: "50%", border: `1px solid ${LINE}`, background: PANEL, fontSize: 18, fontWeight: 600, cursor: "pointer" }}>{d}</button>
-        ))}
-        <button onClick={backspace} className="focus-ring" style={{ width: 64, height: 64, borderRadius: "50%", border: "none", background: "none", fontSize: 13, color: SLATE, cursor: "pointer" }}>Del</button>
-        <button onClick={() => press("0")} className="focus-ring" style={{ width: 64, height: 64, borderRadius: "50%", border: `1px solid ${LINE}`, background: PANEL, fontSize: 18, fontWeight: 600, cursor: "pointer" }}>0</button>
-        <button onClick={submit} className="focus-ring" style={{ width: 64, height: 64, borderRadius: "50%", border: "none", background: INK, color: MARIGOLD, cursor: "pointer" }}><Check size={20} /></button>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  SHELL
- * ---------------------------------------------------------------------- */
-function Shell({ session, isAdmin, tab, setTab, settings, onLogout, children }) {
-  const adminTabs = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "sale", label: "New Sale", icon: ShoppingCart },
-    { id: "services", label: "Services", icon: Wrench },
-    { id: "stock", label: "Stock", icon: Boxes },
-    { id: "purchases", label: "Purchases", icon: Truck },
-    { id: "expenses", label: "Expenses", icon: Wallet },
-    { id: "reports", label: "Reports", icon: BarChart3 },
-    { id: "users", label: "Users", icon: Users },
-    { id: "settings", label: "Settings", icon: SettingsIcon },
-  ];
-  const cashierTabs = [
-    { id: "sale", label: "New Sale", icon: ShoppingCart },
-    { id: "mysales", label: "My Sales", icon: ClipboardList },
-  ];
-  const tabs = isAdmin ? adminTabs : cashierTabs;
-
-  return (
-    <div className="flex flex-col" style={{ minHeight: "100vh" }}>
-      <header style={{ background: INK, color: "#fff" }} className="flex items-center justify-between px-4 py-3 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <img src={LOGO_DATA_URI} alt="Marrions Pharmacy" style={{ width: 34, height: 34, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+        <div className="rounded-2xl p-6 space-y-4" style={{ background: CREAM }}>
           <div>
-            <p style={{ fontFamily: DISPLAY_FONT, fontSize: 15, fontWeight: 800, letterSpacing: 0.2 }}>{settings.name}</p>
-            <p style={{ fontSize: 10.5, color: "#9FB0C6" }}>{settings.address}</p>
+            <label className="text-xs font-medium block mb-1" style={{ color: TEAL_DARK }}>Username</label>
+            <input value={username} onChange={(e) => setUsername(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none border" style={{ borderColor: "#D8CFBB" }} placeholder="e.g. admin" autoCapitalize="none" />
           </div>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, fontWeight: 600 }}>{session.name}</div>
-            <div style={{ fontSize: 10, color: "#9FB0C6" }}>{session.role}</div>
+          <div>
+            <label className="text-xs font-medium block mb-1" style={{ color: TEAL_DARK }}>Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none border" style={{ borderColor: "#D8CFBB" }} placeholder="••••••••" />
           </div>
-          <button onClick={onLogout} className="focus-ring" title="Log out" style={{ background: "rgba(255,255,255,.1)", border: "none", borderRadius: 8, width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff" }}>
-            <LogOut size={14} />
+          {err && <p className="text-xs flex items-center gap-1" style={{ color: "#B3391F" }}><AlertCircle size={13} /> {err}</p>}
+          <button onClick={submit} className="w-full rounded-lg py-2.5 text-sm font-semibold flex items-center justify-center gap-2" style={{ background: TEAL, color: CREAM }}>
+            Log in <ChevronRight size={16} />
           </button>
+          <p className="text-[11px] text-center pt-1" style={{ color: "#8A8270" }}>
+            If this is the first setup, use the admin credentials supplied with your database setup, then change the password.
+          </p>
         </div>
-      </header>
-
-      <div className="flex-1" style={{ paddingBottom: 76 }}>{children}</div>
-
-      <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: PANEL, borderTop: `1px solid ${LINE}` }} className="flex">
-        {tabs.map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)} className="focus-ring flex-1 flex flex-col items-center gap-0.5" style={{ padding: "9px 2px 8px", background: "none", border: "none", cursor: "pointer", color: active ? INK : "#A79F8C" }}>
-              <Icon size={18} strokeWidth={active ? 2.4 : 1.9} />
-              <span style={{ fontSize: 9.5, fontWeight: active ? 700 : 500 }}>{t.label}</span>
-              {active && <div style={{ width: 4, height: 4, borderRadius: "50%", background: MARIGOLD, marginTop: 1 }} />}
-            </button>
-          );
-        })}
-      </nav>
+      </div>
     </div>
   );
 }
 
-function SectionCard({ children, style }) {
-  return <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, marginBottom: 10, ...style }}>{children}</div>;
+function Shell({ session, onLogout, tab, setTab, children, onChangePassword }) {
+  const adminTabs = [
+    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { key: "members", label: "Members", icon: Users },
+    { key: "events", label: "Events", icon: Calendar },
+    { key: "contributions", label: "Funds", icon: Wallet },
+    { key: "interest", label: "Interest", icon: TrendingUp },
+    { key: "loans", label: "Loans", icon: Coins },
+    { key: "minutes", label: "Minutes", icon: FileText },
+    { key: "announcements", label: "News", icon: Megaphone },
+    { key: "settings", label: "Settings", icon: SettingsIcon },
+  ];
+  const memberTabs = [
+    { key: "home", label: "Home", icon: Circle },
+    { key: "events", label: "Events", icon: Calendar },
+    { key: "contributions", label: "My Funds", icon: Wallet },
+    { key: "interest", label: "Interest", icon: TrendingUp },
+    { key: "loans", label: "Loans", icon: Coins },
+    { key: "minutes", label: "Minutes", icon: FileText },
+    { key: "announcements", label: "News", icon: Megaphone },
+  ];
+  const tabs = session.role === "admin" ? adminTabs : memberTabs;
+
+  return (
+    <div style={{ background: CREAM }} className="min-h-screen flex flex-col">
+      <div style={{ background: TEAL }} className="px-4 pt-5 pb-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-wide" style={{ color: "#9FC4BC" }}>{session.role === "admin" ? "Admin" : "Member"}</p>
+            <h1 className="text-base font-semibold" style={{ color: CREAM }}>Matayia's Welfare</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onChangePassword} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full" style={{ background: "#ffffff1A", color: CREAM }}>
+              <KeyRound size={13} /> Password
+            </button>
+            <button onClick={onLogout} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full" style={{ background: "#ffffff1A", color: CREAM }}>
+              <LogOut size={13} /> Log out
+            </button>
+          </div>
+        </div>
+        <p className="text-xs mt-1" style={{ color: "#CFE3DE" }}>Hi, {session.name}</p>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-4 py-4 pb-24 max-w-3xl w-full mx-auto">{children}</div>
+
+      <div className="fixed bottom-0 left-0 right-0 flex justify-center">
+        <div className="w-full max-w-3xl flex border-t" style={{ background: CREAM, borderColor: "#E3DCC9" }}>
+          {tabs.map((t) => {
+            const Icon = t.icon;
+            const active = tab === t.key;
+            return (
+              <button key={t.key} onClick={() => setTab(t.key)} className="flex-1 flex flex-col items-center gap-1 py-2.5" style={{ color: active ? TEAL : "#9A9382" }}>
+                <Icon size={18} strokeWidth={active ? 2.4 : 1.8} />
+                <span className="text-[10px] font-medium">{t.label}</span>
+                {active && <div className="w-1 h-1 rounded-full" style={{ background: GOLD }} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({ children }) {
+  return <div className="rounded-xl p-4 mb-3 border" style={{ background: "#fff", borderColor: "#EDE6D3" }}>{children}</div>;
 }
 function EmptyState({ text }) {
-  return <div style={{ padding: 28, textAlign: "center", border: `1px dashed ${LINE}`, borderRadius: 12 }}><p style={{ fontSize: 13, color: "#A79F8C" }}>{text}</p></div>;
-}
-function StatCard({ label, value, tone, sub }) {
-  return (
-    <div style={{ background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: "12px 14px" }}>
-      <p style={{ fontSize: 10.5, fontWeight: 700, color: SLATE, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</p>
-      <p style={{ fontFamily: MONO_FONT, fontSize: 19, fontWeight: 700, color: tone || INK, marginTop: 3 }}>{value}</p>
-      {sub && <p style={{ fontSize: 10.5, color: SLATE, marginTop: 2 }}>{sub}</p>}
-    </div>
-  );
-}
-function Field({ label, children }) {
-  return <label className="block mb-3"><span style={{ fontSize: 11, fontWeight: 700, color: SLATE, display: "block", marginBottom: 4 }}>{label}</span>{children}</label>;
-}
-const inputStyle = { width: "100%", padding: "9px 11px", borderRadius: 8, border: `1px solid ${LINE}`, fontSize: 13.5, background: "#fff" };
-function Modal({ title, children, onClose }) {
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,.5)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 50 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: PAPER, borderRadius: "18px 18px 0 0", width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", padding: 20 }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 style={{ fontFamily: DISPLAY_FONT, fontSize: 16, fontWeight: 700 }}>{title}</h3>
-          <button onClick={onClose} className="focus-ring" style={{ background: "none", border: "none", cursor: "pointer", color: SLATE }}><X size={18} /></button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
-}
-function ModalActions({ onCancel, onSave, saveLabel = "Save" }) {
-  return (
-    <div className="flex gap-2 mt-4">
-      <button onClick={onCancel} className="focus-ring" style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: `1px solid ${LINE}`, background: PANEL, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-      <button onClick={onSave} className="focus-ring" style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{saveLabel}</button>
-    </div>
-  );
+  return <div className="rounded-xl p-6 text-center border border-dashed" style={{ borderColor: "#D8CFBB" }}><p className="text-sm" style={{ color: "#9A9382" }}>{text}</p></div>;
 }
 
-/* ---------------------------------------------------------------------- *
- *  BARCODE SCANNER — opens the phone camera and decodes a barcode/QR
- *  using the device's back camera, then hands the raw text back up.
- * ---------------------------------------------------------------------- */
-function BarcodeScannerModal({ onDetect, onClose }) {
-  const videoRef = useRef(null);
-  const [scanError, setScanError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    let controls;
-    const reader = new BrowserMultiFormatReader();
-    reader
-      .decodeFromVideoDevice(undefined, videoRef.current, (result) => {
-        if (result && !cancelled) {
-          cancelled = true;
-          controls && controls.stop();
-          onDetect(result.getText());
-        }
-      })
-      .then((c) => { controls = c; })
-      .catch(() => {
-        if (!cancelled) setScanError("Couldn't access the camera. Check that this site has camera permission.");
-      });
-    return () => { cancelled = true; controls && controls.stop(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,.9)", zIndex: 70, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 20 }}>
-      <p style={{ color: "#fff", fontSize: 13.5, fontWeight: 700, marginBottom: 12 }}>Point the camera at a barcode</p>
-      <div style={{ width: "100%", maxWidth: 380, background: "#000", borderRadius: 16, overflow: "hidden", position: "relative" }}>
-        <video ref={videoRef} style={{ width: "100%", display: "block" }} muted playsInline />
-        <div style={{ position: "absolute", inset: 28, border: "2px solid #fff", borderRadius: 10, opacity: 0.55, pointerEvents: "none" }} />
-      </div>
-      {scanError && <p style={{ color: "#fff", fontSize: 12.5, marginTop: 14, textAlign: "center", maxWidth: 320 }}>{scanError}</p>}
-      <button onClick={onClose} className="focus-ring" style={{ marginTop: 18, padding: "10px 22px", borderRadius: 9, border: "none", background: "#fff", color: INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  NEW SALE — the hero screen. Big tappable tiles, a running cart, one
- *  Complete Sale action.
- * ---------------------------------------------------------------------- */
-function NewSale({ services, items, session, completeSale, showReceipt }) {
-  const [catalog, setCatalog] = useState("services");
-  const [query, setQuery] = useState("");
-  const [medQuery, setMedQuery] = useState("");
-  const [cart, setCart] = useState([]); // { kind, refId, name, unitPrice, qty }
-  const [payment, setPayment] = useState("Cash");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [showScanner, setShowScanner] = useState(false);
-
-  const catalogList = catalog === "services"
-    ? services.filter((s) => s.active)
-    : items.filter((i) => i.active);
-  const filtered = catalogList.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()));
-
-  const medMatches = medQuery.trim()
-    ? items.filter((i) => i.active && i.name.toLowerCase().includes(medQuery.trim().toLowerCase())).slice(0, 8)
-    : [];
-
-  const addToCart = (entry) => {
-    setError("");
-    setCart((prev) => {
-      const kind = catalog === "services" ? "service" : "item";
-      const already = prev.find((l) => l.kind === kind && l.refId === entry.id);
-      if (already) {
-        return prev.map((l) => (l === already ? { ...l, qty: l.qty + 1 } : l));
-      }
-      const unitPrice = kind === "service" ? entry.price : entry.sellingPrice;
-      return [...prev, { kind, refId: entry.id, name: entry.name, unitPrice, qty: 1 }];
-    });
-  };
-
-  // Scanning always targets medicines/items (by barcode), regardless of
-  // which catalog tab is currently active.
-  const addItemToCart = (item) => {
-    setError("");
-    setCart((prev) => {
-      const already = prev.find((l) => l.kind === "item" && l.refId === item.id);
-      if (already) {
-        return prev.map((l) => (l === already ? { ...l, qty: l.qty + 1 } : l));
-      }
-      return [...prev, { kind: "item", refId: item.id, name: item.name, unitPrice: item.sellingPrice, qty: 1 }];
-    });
-  };
-
-  const handleScan = (code) => {
-    setShowScanner(false);
-    const item = items.find((i) => i.barcode && i.barcode === code);
-    if (!item) { setError(`No item matches barcode ${code}.`); return; }
-    const isExpired = item.expiryDate && daysUntil(item.expiryDate) < 0;
-    if (!item.active || item.stockQty <= 0 || isExpired) {
-      setError(`${item.name} is out of stock.`);
-      return;
-    }
-    addItemToCart(item);
-  };
-
-  const pickMedMatch = (item) => {
-    const isExpired = item.expiryDate && daysUntil(item.expiryDate) < 0;
-    if (item.stockQty <= 0 || isExpired) return;
-    addItemToCart(item);
-    setMedQuery("");
-  };
-
-  const setQty = (line, qty) => {
-    if (qty <= 0) { setCart((prev) => prev.filter((l) => l !== line)); return; }
-    setCart((prev) => prev.map((l) => (l === line ? { ...l, qty } : l)));
-  };
-
-  const total = cart.reduce((s, l) => s + l.unitPrice * l.qty, 0);
-
-  const complete = async () => {
-    if (cart.length === 0) return;
-    setBusy(true);
-    setError("");
-    try {
-      const lines = cart.map((l) => ({ kind: l.kind, refId: l.refId, name: l.name, qty: l.qty, unitPrice: l.unitPrice, subtotal: l.unitPrice * l.qty }));
-      await completeSale(lines, payment);
-      setCart([]);
-    } catch (err) {
-      setError(err.message || "Couldn't complete sale.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div
-      className="px-4 py-4"
-      style={{
-        backgroundImage: `linear-gradient(rgba(250,248,243,0.94), rgba(250,248,243,0.94)), url(/pharmacy-bg.jpg)`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-        minHeight: "100%",
-      }}
-    >
-      {showScanner && <BarcodeScannerModal onDetect={handleScan} onClose={() => setShowScanner(false)} />}
-
-      <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", marginBottom: 6 }}>Quick add medicine</p>
-      <div className="relative mb-4">
-        <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
-        <input
-          value={medQuery}
-          onChange={(e) => setMedQuery(e.target.value)}
-          placeholder="Search any medicine to add…"
-          className="focus-ring"
-          style={{ ...inputStyle, paddingLeft: 32, paddingRight: 42 }}
-        />
-        <button onClick={() => { setError(""); setShowScanner(true); }} className="focus-ring flex items-center justify-center" title="Scan barcode" style={{ position: "absolute", right: 4, top: 4, width: 34, height: 34, borderRadius: 8, border: "none", background: "none", color: INK, cursor: "pointer" }}>
-          <Camera size={17} />
-        </button>
-        {medMatches.length > 0 && (
-          <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, maxHeight: 280, overflowY: "auto" }}>
-            {medMatches.map((it) => {
-              const isExpired = it.expiryDate && daysUntil(it.expiryDate) < 0;
-              const outOfStock = it.stockQty <= 0 || isExpired;
-              return (
-                <button
-                  key={it.id}
-                  onClick={() => pickMedMatch(it)}
-                  disabled={outOfStock}
-                  className="focus-ring flex items-center gap-2.5"
-                  style={{ width: "100%", textAlign: "left", padding: "8px 12px", border: "none", borderBottom: `1px solid ${LINE}`, background: "none", cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.5 : 1 }}
-                >
-                  {it.imageUrl
-                    ? <img src={it.imageUrl} alt="" style={{ width: 32, height: 32, borderRadius: 7, objectFit: "cover", flexShrink: 0 }} />
-                    : <div style={{ width: 32, height: 32, borderRadius: 7, background: PAPER, flexShrink: 0 }} />}
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="flex justify-between">
-                      <span style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</span>
-                      <span style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 700, color: MARIGOLD }}>{fmtKES(it.sellingPrice)}</span>
-                    </div>
-                    <span style={{ fontSize: 10.5, color: outOfStock ? RED : SLATE }}>{isExpired ? "Expired" : it.stockQty <= 0 ? "Out of stock" : `${it.stockQty} in stock`}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="flex gap-2 mb-3">
-        <button onClick={() => setCatalog("services")} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: catalog === "services" ? INK : PANEL, color: catalog === "services" ? "#fff" : INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Services</button>
-        <button onClick={() => setCatalog("items")} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: catalog === "items" ? INK : PANEL, color: catalog === "items" ? "#fff" : INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Medicines</button>
-      </div>
-
-      <div className="relative mb-3">
-        <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
-        <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={`Search ${catalog}…`} className="focus-ring" style={{ ...inputStyle, paddingLeft: 32 }} />
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8, marginBottom: 90 }}>
-        {filtered.map((c) => {
-          const isItem = catalog === "items";
-          const price = isItem ? c.sellingPrice : c.price;
-          const isExpired = isItem && c.expiryDate && daysUntil(c.expiryDate) < 0;
-          const outOfStock = isItem && (c.stockQty <= 0 || isExpired);
-          const soonDays = isItem && c.expiryDate ? daysUntil(c.expiryDate) : null;
-          return (
-            <button
-              key={c.id}
-              onClick={() => !outOfStock && addToCart(c)}
-              disabled={outOfStock}
-              className="focus-ring"
-              style={{ textAlign: "left", padding: 12, borderRadius: 12, border: `1px solid ${LINE}`, background: outOfStock ? "#F1EEE5" : PANEL, cursor: outOfStock ? "not-allowed" : "pointer", opacity: outOfStock ? 0.6 : 1 }}
-            >
-              {isItem && (
-                c.imageUrl
-                  ? <img src={c.imageUrl} alt="" style={{ width: "100%", height: 64, borderRadius: 8, objectFit: "cover", marginBottom: 8 }} />
-                  : <div style={{ width: "100%", height: 64, borderRadius: 8, background: PAPER, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={18} color="#C9C1AC" /></div>
-              )}
-              <p style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.25, marginBottom: 6 }}>{c.name}</p>
-              <p style={{ fontFamily: MONO_FONT, fontSize: 13.5, fontWeight: 700, color: MARIGOLD }}>{fmtKES(price)}</p>
-              {isItem && <p style={{ fontSize: 10.5, color: isExpired ? RED : c.stockQty <= 0 ? RED : SLATE, marginTop: 2 }}>{isExpired ? "Expired" : c.stockQty <= 0 ? "Out of stock" : `${c.stockQty} in stock`}</p>}
-              {isItem && !isExpired && soonDays != null && soonDays <= 30 && <p style={{ fontSize: 9.5, color: "#8A5A17", marginTop: 1 }}>Expires in {soonDays}d</p>}
-            </button>
-          );
-        })}
-        {filtered.length === 0 && <div style={{ gridColumn: "1 / -1" }}><EmptyState text="Nothing matches." /></div>}
-      </div>
-
-      {cart.length > 0 && (
-        <div style={{ position: "fixed", bottom: 68, left: 0, right: 0, background: PANEL, borderTop: `1px solid ${LINE}`, borderRadius: "16px 16px 0 0", boxShadow: "0 -6px 24px rgba(0,0,0,.08)", maxHeight: "58vh", display: "flex", flexDirection: "column", zIndex: 20 }}>
-          <div className="px-4 pt-3 pb-2 flex items-center justify-between" style={{ borderBottom: `1px solid ${LINE}` }}>
-            <p style={{ fontWeight: 700, fontSize: 13.5 }}>Cart · {cart.length} item{cart.length > 1 ? "s" : ""}</p>
-            <p style={{ fontFamily: MONO_FONT, fontWeight: 700, fontSize: 15, color: INK }}>{fmtKES(total)}</p>
-          </div>
-          <div className="px-4 py-2" style={{ overflowY: "auto", flex: 1 }}>
-            {cart.map((l) => (
-              <div key={`${l.kind}-${l.refId}`} className="flex items-center justify-between" style={{ padding: "7px 0", borderBottom: `1px solid ${LINE}` }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 12.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l.name}</p>
-                  <p style={{ fontFamily: MONO_FONT, fontSize: 11, color: SLATE }}>{fmtKES(l.unitPrice)} × {l.qty} = {fmtKES(l.unitPrice * l.qty)}</p>
-                </div>
-                <div className="flex items-center gap-2 ml-2">
-                  <button onClick={() => setQty(l, l.qty - 1)} className="focus-ring" style={{ width: 26, height: 26, borderRadius: "50%", border: `1px solid ${LINE}`, background: "#fff", cursor: "pointer" }}><Minus size={12} style={{ margin: "auto" }} /></button>
-                  <span style={{ fontFamily: MONO_FONT, fontSize: 12.5, width: 18, textAlign: "center" }}>{l.qty}</span>
-                  <button onClick={() => setQty(l, l.qty + 1)} className="focus-ring" style={{ width: 26, height: 26, borderRadius: "50%", border: `1px solid ${LINE}`, background: "#fff", cursor: "pointer" }}><Plus size={12} style={{ margin: "auto" }} /></button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="px-4 py-3" style={{ borderTop: `1px solid ${LINE}` }}>
-            <div className="flex gap-1.5 mb-2">
-              {PAYMENT_METHODS.map((m) => (
-                <button key={m} onClick={() => setPayment(m)} className="focus-ring" style={{ flex: 1, padding: "7px 0", borderRadius: 8, border: `1px solid ${payment === m ? "transparent" : LINE}`, background: payment === m ? INK : "#fff", color: payment === m ? "#fff" : INK, fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>{m}</button>
-              ))}
-            </div>
-            {error && <p style={{ fontSize: 12, color: RED, marginBottom: 8 }}>{error}</p>}
-            <button onClick={complete} disabled={busy} className="focus-ring" style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: MARIGOLD, color: INK, fontSize: 14, fontWeight: 800, cursor: busy ? "wait" : "pointer" }}>
-              {busy ? "Completing…" : `Complete Sale · ${fmtKES(total)}`}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  RECEIPT
- * ---------------------------------------------------------------------- */
-function ReceiptModal({ sale, settings, onClose }) {
-  const print = () => window.print();
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(20,24,20,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60 }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: 320, maxHeight: "88vh", overflowY: "auto", padding: 20 }}>
-        <div id="receipt-print" style={{ fontFamily: MONO_FONT, fontSize: 12, position: "relative" }}>
-          <img src={LOGO_DATA_URI} alt="" aria-hidden="true" style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", width: 200, height: 200, objectFit: "contain", opacity: 0.08, pointerEvents: "none", zIndex: 0 }} />
-          <div style={{ position: "relative", zIndex: 1 }}>
-          <p style={{ textAlign: "center", fontWeight: 700, fontSize: 14 }}>{settings.name}</p>
-          <p style={{ textAlign: "center", marginBottom: 6 }}>{settings.address}</p>
-          {settings.phone && <p style={{ textAlign: "center", marginBottom: 6 }}>{settings.phone}</p>}
-          <p style={{ borderTop: "1px dashed #999", borderBottom: "1px dashed #999", padding: "6px 0", margin: "8px 0" }}>
-            Receipt No: {String(sale.receiptNo).padStart(6, "0")}<br />
-            Date: {fmtDateTime(sale.createdAt)}<br />
-            Served by: {sale.cashierName}
-          </p>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr><td style={{ paddingBottom: 4 }}>Description</td><td style={{ paddingBottom: 4, textAlign: "center" }}>Qty</td><td style={{ paddingBottom: 4, textAlign: "right" }}>Amount</td></tr>
-            </thead>
-            <tbody>
-              {sale.lines.map((l, i) => (
-                <tr key={i}>
-                  <td style={{ padding: "2px 0" }}>{l.name}</td>
-                  <td style={{ padding: "2px 0", textAlign: "center" }}>{l.qty}</td>
-                  <td style={{ padding: "2px 0", textAlign: "right" }}>{fmtKES(l.subtotal)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p style={{ borderTop: "1px dashed #999", marginTop: 8, paddingTop: 8, display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 13.5 }}>
-            <span>TOTAL:</span><span>{fmtKES(sale.total)}</span>
-          </p>
-          <p style={{ marginTop: 4 }}>Payment: {sale.paymentMethod}</p>
-          <p style={{ textAlign: "center", marginTop: 12 }}>{settings.receiptFooter}</p>
-          </div>
-        </div>
-        <div className="flex gap-2 mt-5">
-          <button onClick={onClose} className="focus-ring" style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: `1px solid ${LINE}`, background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>New Sale</button>
-          <button onClick={print} className="focus-ring flex items-center justify-center gap-1.5" style={{ flex: 1, padding: "10px 0", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}><Printer size={14} /> Print</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  DASHBOARD
- * ---------------------------------------------------------------------- */
-function Dashboard({ sales, expenses, items }) {
+/* ---------------- ADMIN DASHBOARD ---------------- */
+function AdminDashboard({ members, contributions, loans, loanRepayments, events, announcements, settings, setTab }) {
   const today = todayISO();
-  const todaySales = sales.filter((s) => s.createdAt.slice(0, 10) === today);
-  const todayExpenses = expenses.filter((e) => e.date === today);
-  const salesTotal = todaySales.reduce((s, x) => s + x.total, 0);
-  const expensesTotal = todayExpenses.reduce((s, x) => s + Number(x.amount), 0);
+  const month = monthKey(today);
+  const activeLoans = loans.filter((l) => l.status !== "repaid" && !l.actual_return_date);
+  const outstanding = activeLoans.reduce((s, l) => s + Math.max(0, Number(l.total_due || 0) - Number(l.amount_repaid || 0)), 0);
+  const totalFundContributions = contributions.reduce((s, c) => s + Number(c.amount || 0), 0);
+  const monthlyContributions = contributions.filter((c) => monthKey(c.date) === month).reduce((s, c) => s + Number(c.amount || 0), 0);
+  const tableBalance = tableBankingBalance(contributions, loans, loanRepayments);
+  const dueSoon = activeLoans.filter((l) => {
+    const d = daysUntil(l.due_date);
+    return d !== null && d >= 0 && d <= 7;
+  });
+  const overdue = activeLoans.filter((l) => daysUntil(l.due_date) !== null && daysUntil(l.due_date) < 0);
+  const upcomingEvents = [...events].filter((e) => e.date >= today).sort((a,b) => a.date.localeCompare(b.date));
+  const recentContribs = [...contributions].sort((a,b) => (a.date < b.date ? 1 : -1)).slice(0, 5);
+  const memberName = (id) => members.find((m) => m.id === id)?.name || "Unknown member";
 
-  const cogsToday = todaySales.reduce((sum, s) => sum + s.lines.reduce((ls, l) => {
-    if (l.kind !== "item") return ls;
-    const item = items.find((i) => i.id === l.refId);
-    return ls + (item ? item.buyingPrice * l.qty : 0);
-  }, 0), 0);
-  const grossProfit = salesTotal - cogsToday;
-  const netProfit = grossProfit - expensesTotal;
-
-  const byMethod = {};
-  todaySales.forEach((s) => { byMethod[s.paymentMethod] = (byMethod[s.paymentMethod] || 0) + s.total; });
-
-  let servicesSold = 0, itemsSold = 0;
-  todaySales.forEach((s) => s.lines.forEach((l) => { if (l.kind === "service") servicesSold += l.qty; else itemsSold += l.qty; }));
-
-  const lowStock = items.filter((i) => i.active && i.stockQty <= i.reorderLevel);
-  const stockValue = items.reduce((s, i) => s + i.stockQty * i.buyingPrice, 0);
-  const expired = items.filter((i) => i.active && i.expiryDate && daysUntil(i.expiryDate) < 0);
-  const expiringSoon = items.filter((i) => i.active && i.expiryDate && daysUntil(i.expiryDate) >= 0 && daysUntil(i.expiryDate) <= 30);
+  const cards = [
+    { title: "Members", value: members.length, icon: Users, bg: "#E7F3F0", iconBg: "#CDE7E1", color: TEAL, tab: "members" },
+    { title: "Funds collected", value: fmtKES(totalFundContributions), icon: Wallet, bg: "#FFF4D9", iconBg: "#FBE5A6", color: "#8A6817", tab: "contributions" },
+    { title: "Table banking", value: fmtKES(tableBalance), icon: HandCoins, bg: "#EAF0FF", iconBg: "#D7E1FF", color: "#3655A6", tab: "loans" },
+    { title: "Loan balance", value: fmtKES(outstanding), icon: Coins, bg: "#F7E8F1", iconBg: "#EBCFDE", color: "#8B3563", tab: "loans" },
+  ];
 
   return (
-    <div
-      className="px-4 py-4"
-      style={{
-        backgroundImage: `linear-gradient(rgba(250,248,243,0.94), rgba(250,248,243,0.94)), url(/pharmacy-bg.jpg)`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundAttachment: "fixed",
-        minHeight: "100%",
-      }}
-    >
-      <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 18, fontWeight: 800, marginBottom: 2 }}>Today</h2>
-      <p style={{ fontSize: 12, color: SLATE, marginBottom: 12 }}>{fmtDate(today)}</p>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <StatCard label="Sales" value={fmtKES(salesTotal)} />
-        <StatCard label="Expenses" value={fmtKES(expensesTotal)} tone={RED} />
-        <StatCard label="Net Profit" value={fmtKES(netProfit)} tone={netProfit >= 0 ? GREEN : RED} />
-        <StatCard label="Stock Value" value={fmtKES(stockValue)} />
-      </div>
-
-      <SectionCard>
-        <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", marginBottom: 8 }}>By payment method</p>
-        {PAYMENT_METHODS.map((m) => byMethod[m] ? (
-          <div key={m} className="flex justify-between" style={{ padding: "4px 0", fontSize: 13 }}>
-            <span>{m}</span><span style={{ fontFamily: MONO_FONT, fontWeight: 600 }}>{fmtKES(byMethod[m])}</span>
-          </div>
-        ) : null)}
-        {Object.keys(byMethod).length === 0 && <p style={{ fontSize: 12.5, color: "#A79F8C" }}>No sales yet today.</p>}
-      </SectionCard>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-        <StatCard label="Services sold" value={servicesSold} />
-        <StatCard label="Items sold" value={itemsSold} />
-      </div>
-
-      {expired.length > 0 && (
-        <SectionCard style={{ background: "#FBE3DC", border: "1px solid #EBBBA9" }}>
-          <p className="flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 700, color: RED, marginBottom: 6 }}><AlertTriangle size={14} /> Expired — remove from shelf</p>
-          {expired.map((i) => (
-            <p key={i.id} style={{ fontSize: 12.5, color: "#8C3220" }}>⚠️ {i.name} — expired {fmtDate(i.expiryDate)}</p>
-          ))}
-        </SectionCard>
-      )}
-
-      {expiringSoon.length > 0 && (
-        <SectionCard style={{ background: "#FBEFE2", border: "1px solid #F0D9B5" }}>
-          <p className="flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 700, color: "#8A5A17", marginBottom: 6 }}><AlertTriangle size={14} /> Expiring within 30 days</p>
-          {expiringSoon.map((i) => (
-            <p key={i.id} style={{ fontSize: 12.5, color: "#6b5730" }}>⚠️ {i.name} — expires {fmtDate(i.expiryDate)} ({daysUntil(i.expiryDate)}d)</p>
-          ))}
-        </SectionCard>
-      )}
-
-      {lowStock.length > 0 && (
-        <SectionCard style={{ background: "#FBEFE2", border: "1px solid #F0D9B5" }}>
-          <p className="flex items-center gap-1.5" style={{ fontSize: 12.5, fontWeight: 700, color: "#8A5A17", marginBottom: 6 }}><AlertTriangle size={14} /> Low stock</p>
-          {lowStock.map((i) => (
-            <p key={i.id} style={{ fontSize: 12.5, color: "#6b5730" }}>⚠️ Low Stock: {i.name} — {i.stockQty} remaining</p>
-          ))}
-        </SectionCard>
-      )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  SERVICES
- * ---------------------------------------------------------------------- */
-function ServicesView({ services, update }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", price: "" });
-
-  const openNew = () => { setForm({ name: "", price: "" }); setEditing(null); setShowForm(true); };
-  const openEdit = (s) => { setForm({ name: s.name, price: s.price }); setEditing(s.id); setShowForm(true); };
-
-  const save = async () => {
-    if (!form.name.trim() || form.price === "") return;
-    if (editing) {
-      await update.services(services.map((s) => (s.id === editing ? { ...s, name: form.name, price: Number(form.price) } : s)));
-    } else {
-      await update.services([...services, { id: uid(), name: form.name, price: Number(form.price), active: true }]);
-    }
-    setShowForm(false);
-  };
-  const toggleActive = async (s) => update.services(services.map((x) => (x.id === s.id ? { ...x, active: !x.active } : x)));
-  const remove = async (id) => update.services(services.filter((s) => s.id !== id));
-
-  return (
-    <div className="px-4 py-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800 }}>Services ({services.length})</h2>
-        <button onClick={openNew} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add</button>
-      </div>
-      {services.length === 0 && <EmptyState text="No services yet." />}
-      {services.map((s) => (
-        <SectionCard key={s.id}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p style={{ fontWeight: 600, fontSize: 13.5, opacity: s.active ? 1 : 0.45 }}>{s.name}</p>
-              <p style={{ fontFamily: MONO_FONT, fontSize: 13, color: MARIGOLD, marginTop: 2 }}>{fmtKES(s.price)}</p>
-            </div>
-            <div className="flex items-center gap-1">
-              <button onClick={() => toggleActive(s)} className="focus-ring" style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 8px", borderRadius: 999, border: "none", background: s.active ? "#E3F0EA" : "#F1EEE5", color: s.active ? GREEN : "#A79F8C", cursor: "pointer", marginRight: 4 }}>{s.active ? "Active" : "Hidden"}</button>
-              <button onClick={() => openEdit(s)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: SLATE, cursor: "pointer" }}><Pencil size={14} /></button>
-              <button onClick={() => remove(s.id)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: RED, cursor: "pointer" }}><Trash2 size={14} /></button>
-            </div>
-          </div>
-        </SectionCard>
-      ))}
-      {showForm && (
-        <Modal title={editing ? "Edit service" : "Add service"} onClose={() => setShowForm(false)}>
-          <Field label="Service name"><input className="focus-ring" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="Price (Ksh)"><input type="number" className="focus-ring" style={inputStyle} value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} /></Field>
-          <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  STOCK / ITEMS
- * ---------------------------------------------------------------------- */
-function StockView({ items, update, restocks, settings }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [restockFor, setRestockFor] = useState(null);
-  const [form, setForm] = useState(blankForm());
-  const [scanningForForm, setScanningForForm] = useState(false);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [imageError, setImageError] = useState("");
-  function blankForm() { return { name: "", buyingPrice: "", sellingPrice: "", stockQty: "", reorderLevel: "", expiryDate: "", barcode: "", imageUrl: "" }; }
-
-  const openNew = () => { setForm(blankForm()); setEditing(null); setImageError(""); setShowForm(true); };
-  const openEdit = (i) => { setForm({ name: i.name, buyingPrice: i.buyingPrice, sellingPrice: i.sellingPrice, stockQty: i.stockQty, reorderLevel: i.reorderLevel, expiryDate: i.expiryDate || "", barcode: i.barcode || "", imageUrl: i.imageUrl || "" }); setEditing(i.id); setImageError(""); setShowForm(true); };
-
-  const save = async () => {
-    if (!form.name.trim()) return;
-    const payload = { name: form.name, buyingPrice: Number(form.buyingPrice) || 0, sellingPrice: Number(form.sellingPrice) || 0, stockQty: Number(form.stockQty) || 0, reorderLevel: Number(form.reorderLevel) || 0, expiryDate: form.expiryDate || "", barcode: form.barcode.trim() || "", imageUrl: form.imageUrl || "" };
-    if (editing) {
-      await update.items(items.map((i) => (i.id === editing ? { ...i, ...payload } : i)));
-    } else {
-      await update.items([...items, { id: uid(), ...payload, active: true }]);
-    }
-    setShowForm(false);
-  };
-  const toggleActive = async (i) => update.items(items.map((x) => (x.id === i.id ? { ...x, active: !x.active } : x)));
-  const remove = async (id) => update.items(items.filter((i) => i.id !== id));
-
-  const handleImagePick = async (file) => {
-    if (!file) return;
-    setImageError("");
-    setUploadingImage(true);
-    try {
-      const tempId = editing || `new-${uid()}`;
-      const url = await db.uploadItemImage(tempId, file);
-      setForm((f) => ({ ...f, imageUrl: url }));
-    } catch (e) {
-      setImageError(e.message || "Couldn't upload the picture.");
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  const doRestock = async (item, qty, cost, note, expiryDate) => {
-    await update.items(items.map((i) => (i.id === item.id ? { ...i, stockQty: i.stockQty + qty, ...(cost ? { buyingPrice: cost } : {}), ...(expiryDate ? { expiryDate } : {}) } : i)));
-    await update.restocks([...restocks, { id: uid(), itemId: item.id, itemName: item.name, qty, cost: cost || item.buyingPrice, date: todayISO(), note }]);
-    setRestockFor(null);
-  };
-
-  const printStockList = () => {
-    const rows = items.map((i) => {
-      const low = i.stockQty <= i.reorderLevel;
-      return `<tr>
-        <td>${i.name}${i.active ? "" : " (inactive)"}</td>
-        <td style="text-align:right">${fmtKES(i.buyingPrice)}</td>
-        <td style="text-align:right">${fmtKES(i.sellingPrice)}</td>
-        <td style="text-align:right;${low ? "color:#B3261E;font-weight:700;" : ""}">${i.stockQty}</td>
-        <td style="text-align:right">${i.reorderLevel}</td>
-        <td>${i.expiryDate ? fmtDate(i.expiryDate) : "—"}</td>
-      </tr>`;
-    }).join("");
-    const html = `<!doctype html><html><head><title>Stock List - ${settings.name}</title>
-      <meta charset="utf-8" />
-      <style>
-        body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #1a1a1a; }
-        h1 { font-size: 18px; margin: 0 0 2px; }
-        p.sub { font-size: 12px; color: #555; margin: 0 0 18px; }
-        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        th, td { border-bottom: 1px solid #ddd; padding: 6px 8px; text-align: left; }
-        th { background: #f3f3f3; }
-        @media print { @page { margin: 14mm; } }
-      </style>
-      </head><body>
-        <h1>${settings.name}</h1>
-        <p class="sub">${settings.address || ""}${settings.address ? " · " : ""}Stock list printed ${fmtDateTime(new Date().toISOString())} · ${items.length} items</p>
-        <table>
-          <thead><tr><th>Item</th><th>Buy</th><th>Sell</th><th>Qty</th><th>Reorder</th><th>Expiry</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </body></html>`;
-    const w = window.open("", "_blank");
-    if (!w) { alert("Please allow pop-ups for this site to print the stock list."); return; }
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
-  };
-
-  return (
-    <div className="px-4 py-4">
-      <div className="flex items-center justify-between mb-3" style={{ flexWrap: "wrap", gap: 8 }}>
-        <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800 }}>Stock ({items.length})</h2>
-        <div className="flex items-center gap-1.5">
-          <button onClick={printStockList} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: `1px solid ${LINE}`, background: "#fff", color: INK, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Printer size={14} /> Print / Save PDF</button>
-          <button onClick={openNew} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add item</button>
+    <div className="space-y-4">
+      <div className="rounded-2xl p-5 text-white overflow-hidden relative" style={{ background: "linear-gradient(135deg, #164B47 0%, #28756C 100%)" }}>
+        <div className="relative z-10">
+          <p className="text-xs uppercase tracking-widest opacity-80">Administrator dashboard</p>
+          <h2 className="text-2xl font-bold mt-1">Welcome back 👋</h2>
+          <p className="text-xs mt-1 opacity-80">Here is today's welfare overview.</p>
         </div>
+        <div className="absolute -right-8 -bottom-12 w-40 h-40 rounded-full" style={{ background: "#ffffff12" }} />
+        <div className="absolute right-12 -top-10 w-24 h-24 rounded-full" style={{ background: "#C99A2E33" }} />
       </div>
-      {items.length === 0 && <EmptyState text="No items yet." />}
-      {items.map((i) => {
-        const low = i.stockQty <= i.reorderLevel;
-        const dLeft = daysUntil(i.expiryDate);
-        const expired = dLeft != null && dLeft < 0;
-        const expiringSoon = dLeft != null && dLeft >= 0 && dLeft <= 30;
+
+      <div className="grid grid-cols-2 gap-3">
+        {cards.map((c) => {
+          const Icon = c.icon;
+          return <button key={c.title} onClick={() => setTab(c.tab)} className="text-left rounded-2xl p-4 border transition-transform active:scale-[0.98]" style={{ background: c.bg, borderColor: c.iconBg }}>
+            <div className="flex items-start justify-between"><div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: c.iconBg }}><Icon size={18} color={c.color} /></div><ArrowUpRight size={15} color={c.color} /></div>
+            <p className="text-[11px] mt-3" style={{ color: "#6F6A5D" }}>{c.title}</p>
+            <p className="text-lg font-bold mt-0.5" style={{ color: c.color }}>{c.value}</p>
+          </button>;
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={() => setTab("contributions")} className="rounded-2xl p-4 text-left border" style={{ background: "#FFF9E9", borderColor: "#F1DFAC" }}>
+          <div className="flex items-center gap-2"><TrendingUp size={17} color="#9A751D" /><span className="text-xs font-semibold" style={{ color: TEAL_DARK }}>This month</span></div>
+          <p className="text-xl font-bold mt-2" style={{ color: "#9A751D" }}>{fmtKES(monthlyContributions)}</p>
+          <p className="text-[10px] mt-1" style={{ color: "#7A7364" }}>Total contributions recorded</p>
+        </button>
+        <button onClick={() => setTab("loans")} className="rounded-2xl p-4 text-left border" style={{ background: overdue.length ? "#FFF0EC" : "#EEF8F5", borderColor: overdue.length ? "#F0C8BD" : "#CDE7E1" }}>
+          <div className="flex items-center gap-2"><Bell size={17} color={overdue.length ? "#B3391F" : TEAL} /><span className="text-xs font-semibold" style={{ color: TEAL_DARK }}>Loan alerts</span></div>
+          <p className="text-xl font-bold mt-2" style={{ color: overdue.length ? "#B3391F" : TEAL }}>{overdue.length + dueSoon.length}</p>
+          <p className="text-[10px] mt-1" style={{ color: "#7A7364" }}>{overdue.length} overdue · {dueSoon.length} due within 7 days</p>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3">
+        <SectionCard>
+          <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2"><CalendarDays size={17} color={TEAL} /><h3 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Upcoming events</h3></div><button onClick={() => setTab("events")} className="text-[11px] font-semibold" style={{ color: GOLD }}>View all</button></div>
+          {upcomingEvents.length === 0 ? <p className="text-xs" style={{ color: "#9A9382" }}>No upcoming events.</p> : upcomingEvents.slice(0, 3).map((e) => <div key={e.id} className="flex items-center gap-3 py-2 border-t" style={{ borderColor: "#EEE8D9" }}><div className="w-10 h-10 rounded-xl flex flex-col items-center justify-center" style={{ background: "#E7F3F0" }}><span className="text-[9px] uppercase" style={{ color: TEAL }}>{new Date(e.date+"T00:00:00").toLocaleDateString("en-GB",{month:"short"})}</span><span className="text-sm font-bold" style={{ color: TEAL }}>{new Date(e.date+"T00:00:00").getDate()}</span></div><div><p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{e.title}</p><p className="text-[10px] mt-0.5" style={{ color: "#7A7364" }}>{e.location || "Welfare event"}</p></div></div>)}
+        </SectionCard>
+
+        <SectionCard>
+          <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2"><Gift size={17} color={GOLD} /><h3 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Recent contributions</h3></div><button onClick={() => setTab("contributions")} className="text-[11px] font-semibold" style={{ color: GOLD }}>View all</button></div>
+          {recentContribs.length === 0 ? <p className="text-xs" style={{ color: "#9A9382" }}>No contributions recorded.</p> : recentContribs.map((c) => <div key={c.id} className="flex items-center justify-between py-2 border-t" style={{ borderColor: "#EEE8D9" }}><div><p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{memberName(c.member_id)}</p><p className="text-[10px] mt-0.5" style={{ color: "#7A7364" }}>{c.type === "merryGoRound" ? "Merry-Go-Round" : c.type === "tableBanking" ? "Table Banking" : c.type === "benevolent" ? "Benevolent Fund" : "Monthly Share"}</p></div><div className="text-right"><p className="text-xs font-bold" style={{ color: GOLD }}>{fmtKES(c.amount)}</p><p className="text-[10px]" style={{ color: "#9A9382" }}>{fmtDate(c.date)}</p></div></div>)}
+        </SectionCard>
+
+        <SectionCard>
+          <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2"><Megaphone size={17} color="#8B3563" /><h3 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Latest news</h3></div><button onClick={() => setTab("announcements")} className="text-[11px] font-semibold" style={{ color: GOLD }}>View all</button></div>
+          {announcements.length === 0 ? <p className="text-xs" style={{ color: "#9A9382" }}>No announcements yet.</p> : [...announcements].sort((a,b)=>(a.created_at||a.date||"")<(b.created_at||b.date||"")?1:-1).slice(0,3).map((a) => <div key={a.id} className="py-2 border-t" style={{ borderColor: "#EEE8D9" }}><p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{a.title || "Announcement"}</p><p className="text-[10px] mt-1 line-clamp-2" style={{ color: "#7A7364" }}>{a.message || a.body || a.content || ""}</p></div>)}
+        </SectionCard>
+      </div>
+
+      <p className="text-[10px] text-center pb-2" style={{ color: "#9A9382" }}>Matayia's Welfare · Admin overview</p>
+    </div>
+  );
+}
+
+/* ---------------- MEMBERS ---------------- */
+function MembersTab({ members, accounts, crud }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(blank());
+  const [accForMember, setAccForMember] = useState(null);
+  function blank() { return { id: null, name: "", national_id: "", contact: "", next_of_kin_name: "", next_of_kin_contact: "" }; }
+
+  const openNew = () => { setForm(blank()); setEditing(null); setShowForm(true); };
+  const openEdit = (m) => { setForm(m); setEditing(m.id); setShowForm(true); };
+
+  const save = async () => {
+    if (!form.name.trim() || !form.national_id.trim()) return;
+    if (editing) {
+      const { id, ...patch } = form;
+      await crud.updateMember(editing, patch);
+    } else {
+      const { id, ...row } = form;
+      await crud.addMember(row);
+    }
+    setShowForm(false);
+  };
+
+  const accountFor = (memberId) => accounts.find((a) => a.member_id === memberId);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Members ({members.length})</h2>
+        <button onClick={openNew} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: TEAL, color: CREAM }}>
+          <Plus size={14} /> Add member
+        </button>
+      </div>
+
+      {members.length === 0 && <EmptyState text="No members yet. Add your first member to get started." />}
+
+      {members.map((m) => {
+        const acc = accountFor(m.id);
         return (
-          <SectionCard key={i.id}>
-            <div className="flex items-start justify-between">
-              <div className="flex items-start gap-2.5">
-                {i.imageUrl
-                  ? <img src={i.imageUrl} alt="" style={{ width: 44, height: 44, borderRadius: 9, objectFit: "cover", flexShrink: 0, opacity: i.active ? 1 : 0.45, border: `1px solid ${LINE}` }} />
-                  : <div style={{ width: 44, height: 44, borderRadius: 9, background: PAPER, border: `1px dashed ${LINE}`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={16} color="#C9C1AC" /></div>}
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: 13.5, opacity: i.active ? 1 : 0.45 }}>{i.name}</p>
-                  <p style={{ fontSize: 11.5, color: SLATE, marginTop: 2 }}>Buy {fmtKES(i.buyingPrice)} · Sell {fmtKES(i.sellingPrice)}</p>
-                  <p style={{ fontFamily: MONO_FONT, fontSize: 12.5, marginTop: 3, color: low ? RED : INK, fontWeight: 600 }}>
-                    {low && "⚠️ "}{i.stockQty} in stock {low && `(reorder at ${i.reorderLevel})`}
-                  </p>
-                  {i.expiryDate && (
-                    <p style={{ fontSize: 11.5, marginTop: 2, color: expired ? RED : expiringSoon ? "#8A5A17" : SLATE, fontWeight: expired || expiringSoon ? 700 : 400 }}>
-                      {expired ? "⚠️ Expired " : expiringSoon ? "⚠️ Expires " : "Expires "}{fmtDate(i.expiryDate)}{expiringSoon && ` (${dLeft}d)`}
-                    </p>
-                  )}
-                </div>
+          <SectionCard key={m.id}>
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{m.name}</p>
+                <p className="text-xs flex items-center gap-1 mt-1" style={{ color: "#7A7364" }}><CreditCard size={12} /> {m.national_id}</p>
+                <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: "#7A7364" }}><Phone size={12} /> {m.contact}</p>
+                {m.next_of_kin_name && <p className="text-xs mt-1" style={{ color: "#7A7364" }}>Next of kin: {m.next_of_kin_name} ({m.next_of_kin_contact})</p>}
+                <p className="text-[11px] mt-2" style={{ color: acc ? TEAL : "#B3391F" }}>{acc ? `Account: ${acc.username}` : "No login account"}</p>
               </div>
-              <div className="flex items-center gap-1">
-                <button onClick={() => openEdit(i)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: SLATE, cursor: "pointer" }}><Pencil size={14} /></button>
-                <button onClick={() => remove(i.id)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: RED, cursor: "pointer" }}><Trash2 size={14} /></button>
+              <div className="flex gap-2">
+                <button onClick={() => openEdit(m)} className="p-1.5 rounded-full" style={{ background: "#F1ECDD" }}><Pencil size={13} color={TEAL_DARK} /></button>
+                <button onClick={() => crud.removeMember(m.id)} className="p-1.5 rounded-full" style={{ background: "#F6E4DE" }}><Trash2 size={13} color="#B3391F" /></button>
               </div>
             </div>
-            <div className="flex gap-2 mt-2">
-              <button onClick={() => setRestockFor(i)} className="focus-ring" style={{ fontSize: 11.5, fontWeight: 600, padding: "6px 11px", borderRadius: 8, border: `1px solid ${LINE}`, background: "#fff", cursor: "pointer" }}>Restock</button>
-              <button onClick={() => toggleActive(i)} className="focus-ring" style={{ fontSize: 11.5, fontWeight: 600, padding: "6px 11px", borderRadius: 8, border: "none", background: i.active ? "#E3F0EA" : "#F1EEE5", color: i.active ? GREEN : "#A79F8C", cursor: "pointer" }}>{i.active ? "Active" : "Hidden"}</button>
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => setAccForMember(m)} className="text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: "#F1ECDD", color: TEAL_DARK }}>
+                {acc ? "Edit login account" : "Create login account"}
+              </button>
             </div>
           </SectionCard>
         );
       })}
+
       {showForm && (
-        <Modal title={editing ? "Edit item" : "Add item"} onClose={() => setShowForm(false)}>
-          <Field label="Item name"><input className="focus-ring" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <div className="flex gap-3">
-            <Field label="Buying price"><input type="number" className="focus-ring" style={inputStyle} value={form.buyingPrice} onChange={(e) => setForm({ ...form, buyingPrice: e.target.value })} /></Field>
-            <Field label="Selling price"><input type="number" className="focus-ring" style={inputStyle} value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: e.target.value })} /></Field>
-          </div>
-          <div className="flex gap-3">
-            <Field label="Stock quantity"><input type="number" className="focus-ring" style={inputStyle} value={form.stockQty} onChange={(e) => setForm({ ...form, stockQty: e.target.value })} /></Field>
-            <Field label="Reorder level"><input type="number" className="focus-ring" style={inputStyle} value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} /></Field>
-          </div>
-          <Field label="Expiry date (optional)"><input type="date" className="focus-ring" style={inputStyle} value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} /></Field>
-          <Field label="Barcode (optional)">
-            <div className="flex gap-2">
-              <input className="focus-ring" style={{ ...inputStyle, flex: 1 }} value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} placeholder="Scan or type barcode" />
-              <button type="button" onClick={() => setScanningForForm(true)} className="focus-ring flex items-center justify-center" title="Scan barcode" style={{ width: 42, borderRadius: 9, border: `1px solid ${LINE}`, background: "#fff", color: INK, cursor: "pointer", flexShrink: 0 }}>
-                <Camera size={16} />
-              </button>
-            </div>
-          </Field>
-          <Field label="Picture (optional)">
-            <div className="flex items-center gap-3">
-              {form.imageUrl
-                ? <img src={form.imageUrl} alt="" style={{ width: 56, height: 56, borderRadius: 10, objectFit: "cover", border: `1px solid ${LINE}` }} />
-                : <div style={{ width: 56, height: 56, borderRadius: 10, background: "#fff", border: `1px dashed ${LINE}`, display: "flex", alignItems: "center", justifyContent: "center" }}><ImagePlus size={20} color="#C9C1AC" /></div>}
-              <div>
-                <label className="focus-ring" style={{ display: "inline-block", padding: "7px 12px", borderRadius: 8, border: `1px solid ${LINE}`, background: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                  {uploadingImage ? "Uploading…" : form.imageUrl ? "Change photo" : "Add photo"}
-                  <input type="file" accept="image/*" style={{ display: "none" }} disabled={uploadingImage} onChange={(e) => handleImagePick(e.target.files?.[0])} />
-                </label>
-                {form.imageUrl && !uploadingImage && (
-                  <button type="button" onClick={() => setForm((f) => ({ ...f, imageUrl: "" }))} className="focus-ring" style={{ marginLeft: 8, fontSize: 11.5, color: RED, background: "none", border: "none", cursor: "pointer" }}>Remove</button>
-                )}
-                {imageError && <p style={{ fontSize: 11, color: RED, marginTop: 4 }}>{imageError}</p>}
-              </div>
-            </div>
-          </Field>
+        <Modal onClose={() => setShowForm(false)} title={editing ? "Edit member" : "Add member"}>
+          <Field label="Full name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+          <Field label="National ID"><input className="input" value={form.national_id} onChange={(e) => setForm({ ...form, national_id: e.target.value })} /></Field>
+          <Field label="Contact"><input className="input" value={form.contact} onChange={(e) => setForm({ ...form, contact: e.target.value })} /></Field>
+          <Field label="Next of kin name"><input className="input" value={form.next_of_kin_name} onChange={(e) => setForm({ ...form, next_of_kin_name: e.target.value })} /></Field>
+          <Field label="Next of kin contact"><input className="input" value={form.next_of_kin_contact} onChange={(e) => setForm({ ...form, next_of_kin_contact: e.target.value })} /></Field>
           <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
         </Modal>
       )}
-      {scanningForForm && (
-        <BarcodeScannerModal
-          onDetect={(code) => { setForm((f) => ({ ...f, barcode: code })); setScanningForForm(false); }}
-          onClose={() => setScanningForForm(false)}
+
+      {accForMember && (
+        <AccountModal
+          member={accForMember}
+          account={accountFor(accForMember.id)}
+          accounts={accounts}
+          onClose={() => setAccForMember(null)}
+          onSave={async (username, password) => {
+            const existing = accountFor(accForMember.id);
+            if (existing) await crud.updateAccount(existing.id, { username, password, name: accForMember.name });
+            else await crud.addAccount({ username, password, role: "member", member_id: accForMember.id, name: accForMember.name });
+            setAccForMember(null);
+          }}
         />
       )}
-      {restockFor && <RestockModal item={restockFor} onClose={() => setRestockFor(null)} onSave={doRestock} />}
     </div>
   );
 }
 
-function RestockModal({ item, onClose, onSave }) {
-  const [qty, setQty] = useState("");
-  const [cost, setCost] = useState(item.buyingPrice);
-  const [expiryDate, setExpiryDate] = useState(item.expiryDate || "");
-  const [note, setNote] = useState("");
-  const save = () => { if (Number(qty) > 0) onSave(item, Number(qty), Number(cost) || item.buyingPrice, note, expiryDate); };
+function AccountModal({ member, account, accounts, onClose, onSave }) {
+  const [username, setUsername] = useState(account?.username || member.national_id);
+  const [password, setPassword] = useState(account?.password || "");
+  const [err, setErr] = useState("");
+  const save = () => {
+    if (!username.trim() || !password.trim()) { setErr("Username and password are required."); return; }
+    const clash = accounts.find((a) => a.username.toLowerCase() === username.trim().toLowerCase() && a.id !== account?.id);
+    if (clash) { setErr("That username is already taken."); return; }
+    onSave(username.trim(), password.trim());
+  };
   return (
-    <Modal title={`Restock — ${item.name}`} onClose={onClose}>
-      <Field label="Quantity received"><input type="number" className="focus-ring" style={inputStyle} value={qty} onChange={(e) => setQty(e.target.value)} /></Field>
-      <Field label="Buying price (Ksh, optional update)"><input type="number" className="focus-ring" style={inputStyle} value={cost} onChange={(e) => setCost(e.target.value)} /></Field>
-      <Field label="New expiry date (optional)"><input type="date" className="focus-ring" style={inputStyle} value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} /></Field>
-      <Field label="Note (optional)"><input className="focus-ring" style={inputStyle} value={note} onChange={(e) => setNote(e.target.value)} /></Field>
-      <ModalActions onCancel={onClose} onSave={save} saveLabel="Add stock" />
+    <Modal onClose={onClose} title={`Login for ${member.name}`}>
+      <Field label="Username"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+      <Field label="Password"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+      {err && <p className="text-xs mb-2" style={{ color: "#B3391F" }}>{err}</p>}
+      <ModalActions onCancel={onClose} onSave={save} />
     </Modal>
   );
 }
 
-/* ---------------------------------------------------------------------- *
- *  PURCHASES — vendors, purchase orders, and WhatsApp invoices.
- * ---------------------------------------------------------------------- */
-function cleanPhoneForWhatsapp(phone) {
-  let digits = (phone || "").replace(/[^\d]/g, "");
-  if (digits.startsWith("0")) digits = "254" + digits.slice(1); // Kenyan local -> international
-  return digits;
-}
+/* ---------------- EVENTS ---------------- */
+function EventsTab({ events, isAdmin, members, attendance, crud }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(blank());
+  const [attendEvent, setAttendEvent] = useState(null);
+  const [smsFor, setSmsFor] = useState(null);
+  function blank() { return { title: "", date: "", type: "meeting", description: "" }; }
 
-function PurchasesView({ items, vendors, purchaseOrders, settings, update }) {
-  const [subTab, setSubTab] = useState("new");
-  const [invoiceFor, setInvoiceFor] = useState(null);
+  const sorted = useMemo(() => [...events].sort((a, b) => (a.date > b.date ? 1 : -1)), [events]);
+  const upcoming = sorted.filter((e) => e.date >= todayISO());
+  const past = sorted.filter((e) => e.date < todayISO());
 
-  // --- Vendors ---
-  const [showVendorForm, setShowVendorForm] = useState(false);
-  const [editingVendor, setEditingVendor] = useState(null);
-  const [vendorForm, setVendorForm] = useState({ name: "", phone: "", address: "", notes: "" });
-
-  const openNewVendor = () => { setVendorForm({ name: "", phone: "", address: "", notes: "" }); setEditingVendor(null); setShowVendorForm(true); };
-  const openEditVendor = (v) => { setVendorForm({ name: v.name, phone: v.phone, address: v.address || "", notes: v.notes || "" }); setEditingVendor(v.id); setShowVendorForm(true); };
-  const saveVendor = async () => {
-    if (!vendorForm.name.trim() || !vendorForm.phone.trim()) return;
-    if (editingVendor) {
-      await update.vendors(vendors.map((v) => (v.id === editingVendor ? { ...v, ...vendorForm } : v)));
-    } else {
-      await update.vendors([...vendors, { id: uid(), ...vendorForm }]);
-    }
-    setShowVendorForm(false);
-  };
-  const removeVendor = async (id) => update.vendors(vendors.filter((v) => v.id !== id));
-
-  // --- New purchase order ---
-  const [vendorId, setVendorId] = useState("");
-  const [itemQuery, setItemQuery] = useState("");
-  const [poLines, setPoLines] = useState([]); // { itemId, itemName, qty, cost }
-  const [poNotes, setPoNotes] = useState("");
-  const [poError, setPoError] = useState("");
-
-  const itemMatches = itemQuery.trim()
-    ? items.filter((i) => i.active && i.name.toLowerCase().includes(itemQuery.trim().toLowerCase())).slice(0, 8)
-    : [];
-
-  const addLine = (item) => {
-    setItemQuery("");
-    setPoLines((prev) => {
-      if (prev.find((l) => l.itemId === item.id)) return prev;
-      return [...prev, { itemId: item.id, itemName: item.name, qty: 1, cost: item.buyingPrice }];
-    });
-  };
-  const updateLine = (itemId, patch) => setPoLines((prev) => prev.map((l) => (l.itemId === itemId ? { ...l, ...patch } : l)));
-  const removeLine = (itemId) => setPoLines((prev) => prev.filter((l) => l.itemId !== itemId));
-  const poTotal = poLines.reduce((s, l) => s + Number(l.qty || 0) * Number(l.cost || 0), 0);
-
-  const resetPoForm = () => { setVendorId(""); setPoLines([]); setPoNotes(""); setPoError(""); };
-
-  const createPO = async () => {
-    const vendor = vendors.find((v) => v.id === vendorId);
-    if (!vendor) { setPoError("Choose a vendor."); return; }
-    if (poLines.length === 0) { setPoError("Add at least one item."); return; }
-    setPoError("");
-    const lines = poLines.map((l) => ({ itemId: l.itemId, itemName: l.itemName, qty: Number(l.qty) || 0, cost: Number(l.cost) || 0, subtotal: (Number(l.qty) || 0) * (Number(l.cost) || 0) }));
-    const po = {
-      id: uid(),
-      poNumber: settings.nextPoNo,
-      vendorId: vendor.id,
-      vendorName: vendor.name,
-      vendorPhone: vendor.phone,
-      lines,
-      total: lines.reduce((s, l) => s + l.subtotal, 0),
-      notes: poNotes,
-      createdAt: new Date().toISOString(),
-    };
-    await update.purchaseOrders([...purchaseOrders, po]);
-    await update.settings({ ...settings, nextPoNo: settings.nextPoNo + 1 });
-    resetPoForm();
-    setInvoiceFor(po);
+  const save = async () => {
+    if (!form.title.trim() || !form.date) return;
+    await crud.addEvent(form);
+    setShowForm(false);
+    setForm(blank());
   };
 
-  // --- Invoice: WhatsApp text + printable PDF ---
-  const invoiceText = (po) => {
-    const lines = po.lines.map((l) => `• ${l.itemName} — ${l.qty} x ${fmtKES(l.cost)} = ${fmtKES(l.subtotal)}`).join("\n");
-    return `*Purchase Order #${String(po.poNumber).padStart(4, "0")}*\n${settings.name}\n${settings.address || ""}\n\nTo: ${po.vendorName}\nDate: ${fmtDate(po.createdAt.slice(0, 10))}\n\n${lines}\n\n*Total: ${fmtKES(po.total)}*${po.notes ? `\n\nNote: ${po.notes}` : ""}`;
-  };
+  const typeColor = { meeting: TEAL, gathering: GOLD, other: "#8A8270" };
 
-  const sendViaWhatsapp = (po) => {
-    const phone = cleanPhoneForWhatsapp(po.vendorPhone);
-    const text = encodeURIComponent(invoiceText(po));
-    const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
-    window.open(url, "_blank");
-  };
-
-  const printInvoice = (po) => {
-    const rows = po.lines.map((l) => `<tr><td>${l.itemName}</td><td style="text-align:right">${l.qty}</td><td style="text-align:right">${fmtKES(l.cost)}</td><td style="text-align:right">${fmtKES(l.subtotal)}</td></tr>`).join("");
-    const html = `<!doctype html><html><head><title>PO #${po.poNumber} - ${settings.name}</title>
-      <meta charset="utf-8" />
-      <style>
-        body { font-family: Arial, Helvetica, sans-serif; padding: 28px; color: #1a1a1a; }
-        h1 { font-size: 19px; margin: 0 0 2px; }
-        p.sub { font-size: 12px; color: #555; margin: 0 0 4px; }
-        .row { display: flex; justify-content: space-between; margin: 18px 0 14px; }
-        table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 6px; }
-        th, td { border-bottom: 1px solid #ddd; padding: 7px 8px; text-align: left; }
-        th { background: #f3f3f3; }
-        .total { text-align: right; font-size: 14px; font-weight: 700; margin-top: 10px; }
-        @media print { @page { margin: 16mm; } }
-      </style>
-      </head><body>
-        <h1>${settings.name}</h1>
-        <p class="sub">${settings.address || ""}${settings.phone ? " · " + settings.phone : ""}</p>
-        <div class="row">
-          <div><strong>Purchase Order #${String(po.poNumber).padStart(4, "0")}</strong><br/>Date: ${fmtDate(po.createdAt.slice(0, 10))}</div>
-          <div style="text-align:right"><strong>Vendor</strong><br/>${po.vendorName}<br/>${po.vendorPhone || ""}</div>
+  const Row = ({ e }) => {
+    const rec = attendance[e.id] || {};
+    const presentCount = Object.values(rec).filter(Boolean).length;
+    return (
+      <SectionCard key={e.id}>
+        <div className="flex justify-between items-start">
+          <div>
+            <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full" style={{ background: `${typeColor[e.type] || "#8A8270"}22`, color: typeColor[e.type] || "#8A8270" }}>{e.type}</span>
+            <p className="text-sm font-semibold mt-1.5" style={{ color: TEAL_DARK }}>{e.title}</p>
+            <p className="text-xs flex items-center gap-1 mt-0.5" style={{ color: "#7A7364" }}><Clock size={12} /> {fmtDate(e.date)}</p>
+            {e.description && <p className="text-xs mt-1.5" style={{ color: "#7A7364" }}>{e.description}</p>}
+            {Object.keys(rec).length > 0 && <p className="text-[11px] mt-1.5" style={{ color: TEAL }}>{presentCount} present of {members.length}</p>}
+          </div>
+          {isAdmin && <button onClick={() => crud.removeEvent(e.id)} className="p-1.5 rounded-full" style={{ background: "#F6E4DE" }}><Trash2 size={13} color="#B3391F" /></button>}
         </div>
-        <table>
-          <thead><tr><th>Item</th><th>Qty</th><th>Unit cost</th><th>Subtotal</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-        <p class="total">Total: ${fmtKES(po.total)}</p>
-        ${po.notes ? `<p style="font-size:12px;color:#555;margin-top:12px;">Note: ${po.notes}</p>` : ""}
-      </body></html>`;
-    const w = window.open("", "_blank");
-    if (!w) { alert("Please allow pop-ups to print the invoice."); return; }
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
+        {isAdmin && (
+          <div className="mt-3 flex gap-2 flex-wrap">
+            <button onClick={() => setAttendEvent(e)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: "#F1ECDD", color: TEAL_DARK }}><ClipboardCheck size={13} /> Mark attendance</button>
+            <button onClick={() => setSmsFor(e)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: "#F1ECDD", color: TEAL_DARK }}><MessageSquare size={13} /> Send SMS</button>
+          </div>
+        )}
+      </SectionCard>
+    );
   };
 
   return (
-    <div className="px-4 py-4">
-      <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800, marginBottom: 10 }}>Purchases</h2>
-
-      <div className="flex gap-2 mb-4">
-        {[{ id: "new", label: "New Order" }, { id: "history", label: "History" }, { id: "vendors", label: "Vendors" }].map((t) => (
-          <button key={t.id} onClick={() => setSubTab(t.id)} className="focus-ring flex-1" style={{ padding: "9px 0", borderRadius: 10, border: "none", background: subTab === t.id ? INK : PANEL, color: subTab === t.id ? "#fff" : INK, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>{t.label}</button>
-        ))}
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Events & Meetings</h2>
+        {isAdmin && <button onClick={() => setShowForm(true)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: TEAL, color: CREAM }}><Plus size={14} /> Add event</button>}
       </div>
 
-      {subTab === "vendors" && (
+      <p className="text-xs font-medium mb-2" style={{ color: "#7A7364" }}>Upcoming</p>
+      {upcoming.length === 0 && <EmptyState text="No upcoming events. Monthly meetings can be added here." />}
+      {upcoming.map((e) => <Row key={e.id} e={e} />)}
+
+      {past.length > 0 && (
         <>
-          <button onClick={openNewVendor} className="focus-ring flex items-center gap-1.5" style={{ marginBottom: 12, padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add vendor</button>
-          {vendors.length === 0 && <EmptyState text="No vendors yet." />}
-          {vendors.map((v) => (
-            <SectionCard key={v.id}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: 13.5 }}>{v.name}</p>
-                  <p style={{ fontSize: 11.5, color: SLATE, marginTop: 2 }}>{v.phone}</p>
-                  {v.address && <p style={{ fontSize: 11.5, color: SLATE, marginTop: 1 }}>{v.address}</p>}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => openEditVendor(v)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: SLATE, cursor: "pointer" }}><Pencil size={14} /></button>
-                  <button onClick={() => removeVendor(v.id)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: RED, cursor: "pointer" }}><Trash2 size={14} /></button>
-                </div>
-              </div>
-            </SectionCard>
-          ))}
+          <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>Past</p>
+          {past.map((e) => <Row key={e.id} e={e} />)}
         </>
       )}
 
-      {subTab === "new" && (
-        <>
-          <Field label="Vendor">
-            <select className="focus-ring" style={inputStyle} value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-              <option value="">Select a vendor…</option>
-              {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+      {showForm && (
+        <Modal onClose={() => setShowForm(false)} title="Add event">
+          <Field label="Title"><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Monthly Meeting - August" /></Field>
+          <Field label="Date"><input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label="Type">
+            <select className="input" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+              <option value="meeting">Meeting</option>
+              <option value="gathering">Gathering</option>
+              <option value="other">Other</option>
             </select>
           </Field>
-          {vendors.length === 0 && <p style={{ fontSize: 11.5, color: SLATE, marginTop: -6, marginBottom: 12 }}>No vendors saved yet — add one in the Vendors tab first.</p>}
+          <Field label="Description (optional)"><textarea className="input" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
+          <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
+        </Modal>
+      )}
 
-          <div className="relative mb-3">
-            <Search size={15} color="#A79F8C" style={{ position: "absolute", left: 11, top: 10 }} />
-            <input value={itemQuery} onChange={(e) => setItemQuery(e.target.value)} placeholder="Search medicine to add to order…" className="focus-ring" style={{ ...inputStyle, paddingLeft: 32 }} />
-            {itemMatches.length > 0 && (
-              <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#fff", border: `1px solid ${LINE}`, borderRadius: 10, boxShadow: "0 6px 20px rgba(0,0,0,.12)", zIndex: 30, maxHeight: 260, overflowY: "auto" }}>
-                {itemMatches.map((it) => (
-                  <button key={it.id} onClick={() => addLine(it)} className="focus-ring" style={{ width: "100%", textAlign: "left", padding: "9px 12px", border: "none", borderBottom: `1px solid ${LINE}`, background: "none", cursor: "pointer" }}>
-                    <span style={{ fontSize: 13, fontWeight: 600 }}>{it.name}</span>
-                    <span style={{ fontSize: 10.5, color: SLATE, display: "block" }}>Usual buy price {fmtKES(it.buyingPrice)}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+      {attendEvent && (
+        <AttendanceModal event={attendEvent} members={members} attendance={attendance} crud={crud} onClose={() => setAttendEvent(null)} />
+      )}
+
+      {smsFor && (
+        <SmsModal phones={members.map((m) => m.contact)} message={`${smsFor.title} — ${fmtDate(smsFor.date)}. ${smsFor.description || ""}`.trim()} onClose={() => setSmsFor(null)} />
+      )}
+    </div>
+  );
+}
+
+function AttendanceModal({ event, members, attendance, crud, onClose }) {
+  const [rec, setRec] = useState(attendance[event.id] || {});
+  const toggle = (memberId) => setRec((prev) => ({ ...prev, [memberId]: !prev[memberId] }));
+  const save = async () => { await crud.saveAttendance(event.id, rec); onClose(); };
+  return (
+    <Modal onClose={onClose} title={`Attendance — ${event.title}`}>
+      {members.length === 0 && <EmptyState text="No members to mark yet." />}
+      <div className="space-y-2 mb-3">
+        {members.map((m) => {
+          const present = !!rec[m.id];
+          return (
+            <button key={m.id} onClick={() => toggle(m.id)} className="w-full flex items-center justify-between rounded-lg px-3 py-2.5 border" style={{ borderColor: present ? TEAL : "#D8CFBB", background: present ? "#EAF2F0" : "#fff" }}>
+              <span className="text-sm" style={{ color: TEAL_DARK }}>{m.name}</span>
+              {present ? <UserCheck size={16} color={TEAL} /> : <UserX size={16} color="#B0A992" />}
+            </button>
+          );
+        })}
+      </div>
+      <ModalActions onCancel={onClose} onSave={save} />
+    </Modal>
+  );
+}
+
+function SmsModal({ phones, message, onClose }) {
+  const [copiedMsg, setCopiedMsg] = useState(false);
+  const [copiedNums, setCopiedNums] = useState(false);
+  const nums = phones.filter(Boolean);
+  const copy = async (text, setFlag) => {
+    try { await navigator.clipboard.writeText(text); setFlag(true); setTimeout(() => setFlag(false), 1500); } catch { setFlag(false); }
+  };
+  return (
+    <Modal onClose={onClose} title="Send SMS">
+      <p className="text-xs mb-3" style={{ color: "#7A7364" }}>Tap below to open your phone's SMS app with the numbers and message ready. If nothing opens, copy the message and numbers instead.</p>
+      <a href={smsLink(nums, message)} className="w-full rounded-lg py-2.5 text-sm font-semibold flex items-center justify-center gap-2 mb-3" style={{ background: TEAL, color: CREAM, textDecoration: "none" }}>
+        <MessageSquare size={16} /> Open SMS app
+      </a>
+      <Field label={`Recipients (${nums.length})`}>
+        <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "#D8CFBB", background: "#fff", color: TEAL_DARK, wordBreak: "break-all" }}>{nums.join(", ") || "No member phone numbers on file."}</div>
+        <button onClick={() => copy(nums.join(", "), setCopiedNums)} className="text-xs mt-1.5 font-medium" style={{ color: TEAL }}>{copiedNums ? "Copied ✓" : "Copy numbers"}</button>
+      </Field>
+      <Field label="Message">
+        <div className="rounded-lg border px-3 py-2 text-xs" style={{ borderColor: "#D8CFBB", background: "#fff", color: TEAL_DARK, whiteSpace: "pre-wrap" }}>{message}</div>
+        <button onClick={() => copy(message, setCopiedMsg)} className="text-xs mt-1.5 font-medium" style={{ color: TEAL }}>{copiedMsg ? "Copied ✓" : "Copy message"}</button>
+      </Field>
+    </Modal>
+  );
+}
+
+/* ---------------- CONTRIBUTIONS ---------------- */
+function ContributionsTab({ session, members, contributions, settings, crud }) {
+  const isAdmin = session.role === "admin";
+  const [showForm, setShowForm] = useState(false);
+  const [filterMember, setFilterMember] = useState(isAdmin ? "all" : session.member_id);
+  const [form, setForm] = useState(blank());
+  function blank() {
+    return { member_id: members[0]?.id || "", type: "monthly", amount: settings.monthly, date: todayISO(), note: "", recipient_id: "", sugar_given: false };
+  }
+
+  const visible = isAdmin ? (filterMember === "all" ? contributions : contributions.filter((c) => c.member_id === filterMember)) : contributions.filter((c) => c.member_id === session.member_id);
+  const sorted = [...visible].sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  const totals = useMemo(() => {
+    const t = { monthly: 0, merryGoRound: 0, benevolent: 0, tableBanking: 0 };
+    visible.forEach((c) => { t[c.type] = (t[c.type] || 0) + Number(c.amount); });
+    return t;
+  }, [visible]);
+
+  const mgrRounds = useMemo(() => {
+    const mgr = contributions.filter((c) => c.type === "merryGoRound" && c.recipient_id);
+    const map = {};
+    mgr.forEach((c) => {
+      const key = `${monthKey(c.date)}_${c.recipient_id}`;
+      if (!map[key]) map[key] = { month: monthKey(c.date), recipient_id: c.recipient_id, total: 0, contributors: [] };
+      map[key].total += Number(c.amount);
+      map[key].contributors.push(c);
+    });
+    return Object.values(map).sort((a, b) => (a.month < b.month ? 1 : -1));
+  }, [contributions]);
+
+  const myReceivedRounds = !isAdmin ? mgrRounds.filter((r) => r.recipient_id === session.member_id) : [];
+
+  const save = async () => {
+    if (!form.member_id || !form.amount) return;
+    const record = { ...form, amount: Number(form.amount) };
+    if (record.type !== "merryGoRound") { record.recipient_id = null; record.sugar_given = false; }
+    if (!record.recipient_id) record.recipient_id = null;
+    await crud.addContribution(record);
+    setShowForm(false);
+  };
+
+  const typeLabel = (k) => CONTRIB_TYPES.find((t) => t.key === k)?.label || k;
+  const memberName = (id) => members.find((m) => m.id === id)?.name || "Unknown";
+  const monthLabel = (mk) => { const [y, m] = mk.split("-"); return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" }); };
+  const contribLine = (c) => `${memberName(c.member_id)} (${fmtKES(c.amount)}${c.sugar_given ? " + 1kg sugar" : ""})`;
+
+  // For a member, group all Merry-Go-Round contributions they have given by recipient.
+  // Each recipient appears once with the total amount, sugar contributions and dates.
+  const myGivenRounds = useMemo(() => {
+    if (isAdmin) return [];
+    const grouped = {};
+    contributions
+      .filter((c) => c.type === "merryGoRound" && c.member_id === session.member_id && c.recipient_id)
+      .forEach((c) => {
+        const key = c.recipient_id;
+        if (!grouped[key]) grouped[key] = { recipient_id: key, total: 0, sugar: 0, records: [] };
+        grouped[key].total += Number(c.amount || 0);
+        if (c.sugar_given) grouped[key].sugar += 1;
+        grouped[key].records.push(c);
+      });
+    return Object.values(grouped).sort((a, b) => memberName(a.recipient_id).localeCompare(memberName(b.recipient_id)));
+  }, [contributions, isAdmin, session.member_id]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{isAdmin ? "Contributions" : "My Contributions"}</h2>
+        {isAdmin && <button onClick={() => { setForm(blank()); setShowForm(true); }} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: TEAL, color: CREAM }}><Plus size={14} /> Record</button>}
+      </div>
+
+      {isAdmin && (
+        <div className="mb-3">
+          <select className="input" value={filterMember} onChange={(e) => setFilterMember(e.target.value)}>
+            <option value="all">All members</option>
+            {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2 mb-4">
+        {CONTRIB_TYPES.map((t) => (
+          <div key={t.key} className="rounded-xl p-3 text-center border" style={{ background: "#fff", borderColor: "#EDE6D3" }}>
+            <p className="text-[10px] font-medium" style={{ color: "#8A8270" }}>{t.label}</p>
+            <p className="text-sm font-semibold mt-1" style={{ color: TEAL_DARK }}>{fmtKES(totals[t.key])}</p>
           </div>
+        ))}
+      </div>
 
-          {poLines.length === 0 && <EmptyState text="Search above to add items to this order." />}
-          {poLines.map((l) => (
-            <SectionCard key={l.itemId}>
-              <div className="flex items-center justify-between mb-2">
-                <p style={{ fontWeight: 600, fontSize: 13 }}>{l.itemName}</p>
-                <button onClick={() => removeLine(l.itemId)} className="focus-ring" style={{ padding: 4, background: "none", border: "none", color: RED, cursor: "pointer" }}><Trash2 size={14} /></button>
-              </div>
-              <div className="flex gap-3">
-                <Field label="Qty"><input type="number" min="1" className="focus-ring" style={inputStyle} value={l.qty} onChange={(e) => updateLine(l.itemId, { qty: e.target.value })} /></Field>
-                <Field label="Unit cost"><input type="number" className="focus-ring" style={inputStyle} value={l.cost} onChange={(e) => updateLine(l.itemId, { cost: e.target.value })} /></Field>
-              </div>
-              <p style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 700, textAlign: "right" }}>{fmtKES(Number(l.qty || 0) * Number(l.cost || 0))}</p>
+      {!isAdmin && (
+        <>
+          <p className="text-xs font-medium mb-2 mt-1" style={{ color: "#7A7364" }}>Table Banking: your contribution history</p>
+          {visible.filter((c) => c.type === "tableBanking").length === 0 ? (
+            <SectionCard>
+              <p className="text-xs" style={{ color: "#9A9382" }}>No Table Banking contributions recorded for you yet.</p>
             </SectionCard>
-          ))}
-
-          {poLines.length > 0 && (
+          ) : (
             <>
-              <Field label="Note to vendor (optional)"><input className="focus-ring" style={inputStyle} value={poNotes} onChange={(e) => setPoNotes(e.target.value)} /></Field>
-              <div className="flex justify-between items-center" style={{ margin: "10px 0 14px" }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>Total</span>
-                <span style={{ fontFamily: MONO_FONT, fontSize: 18, fontWeight: 800 }}>{fmtKES(poTotal)}</span>
-              </div>
-              {poError && <p style={{ fontSize: 12, color: RED, marginBottom: 10 }}>{poError}</p>}
-              <button onClick={createPO} className="focus-ring" style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: MARIGOLD, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 90 }}>Save & Prepare Invoice</button>
+              <SectionCard>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-medium" style={{ color: "#7A7364" }}>Total Table Banking contributed</p>
+                    <p className="text-lg font-bold mt-1" style={{ color: TEAL_DARK }}>{fmtKES(totals.tableBanking)}</p>
+                  </div>
+                  <div className="rounded-full px-3 py-1.5" style={{ background: "#EAF0FF", color: "#3655A6" }}>
+                    <Wallet size={18} />
+                  </div>
+                </div>
+              </SectionCard>
+              {visible.filter((c) => c.type === "tableBanking").sort((a, b) => (a.date < b.date ? 1 : -1)).map((c) => (
+                <SectionCard key={`tb-${c.id}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{fmtKES(c.amount)}</p>
+                      <p className="text-xs mt-1" style={{ color: "#7A7364" }}>{fmtDate(c.date)}</p>
+                      {c.note && <p className="text-xs mt-1" style={{ color: "#7A7364" }}>{c.note}</p>}
+                    </div>
+                    <span className="text-[10px] font-semibold px-2 py-1 rounded-full" style={{ background: "#E7F3F0", color: TEAL }}>Table Banking</span>
+                  </div>
+                </SectionCard>
+              ))}
             </>
           )}
         </>
       )}
 
-      {subTab === "history" && (
+      {!isAdmin && myGivenRounds.length > 0 && (
         <>
-          {purchaseOrders.length === 0 && <EmptyState text="No purchase orders yet." />}
-          {[...purchaseOrders].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((po) => (
-            <button key={po.id} onClick={() => setInvoiceFor(po)} className="focus-ring" style={{ width: "100%", textAlign: "left", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, marginBottom: 10, cursor: "pointer" }}>
-              <div className="flex justify-between">
-                <div>
-                  <p style={{ fontSize: 12.5, fontWeight: 600 }}>PO #{String(po.poNumber).padStart(4, "0")} · {po.vendorName}</p>
-                  <p style={{ fontSize: 11, color: SLATE, marginTop: 1 }}>{fmtDateTime(po.createdAt)} · {po.lines.length} items</p>
+          <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>Merry-Go-Round: people you have given</p>
+          <SectionCard>
+            <div className="space-y-2">
+              {myGivenRounds.map((r) => (
+                <div key={r.recipient_id} className="flex items-center justify-between gap-3 rounded-lg px-3 py-2" style={{ background: "#F8F3E7" }}>
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{memberName(r.recipient_id)}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "#7A7364" }}>
+                      {r.records.length} contribution{r.records.length === 1 ? "" : "s"}{r.sugar ? ` · ${r.sugar}kg sugar` : ""}
+                    </p>
+                  </div>
+                  <p className="text-xs font-semibold" style={{ color: GOLD }}>{fmtKES(r.total)}</p>
                 </div>
-                <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(po.total)}</p>
-              </div>
-            </button>
-          ))}
+              ))}
+            </div>
+          </SectionCard>
         </>
       )}
 
-      {showVendorForm && (
-        <Modal title={editingVendor ? "Edit vendor" : "Add vendor"} onClose={() => setShowVendorForm(false)}>
-          <Field label="Vendor / supplier name"><input className="focus-ring" style={inputStyle} value={vendorForm.name} onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })} /></Field>
-          <Field label="WhatsApp phone number"><input className="focus-ring" style={inputStyle} placeholder="e.g. 0712345678" value={vendorForm.phone} onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })} /></Field>
-          <Field label="Address (optional)"><input className="focus-ring" style={inputStyle} value={vendorForm.address} onChange={(e) => setVendorForm({ ...vendorForm, address: e.target.value })} /></Field>
-          <Field label="Notes (optional)"><input className="focus-ring" style={inputStyle} value={vendorForm.notes} onChange={(e) => setVendorForm({ ...vendorForm, notes: e.target.value })} /></Field>
-          <ModalActions onCancel={() => setShowVendorForm(false)} onSave={saveVendor} />
-        </Modal>
-      )}
-
-      {invoiceFor && (
-        <Modal title={`Purchase Order #${String(invoiceFor.poNumber).padStart(4, "0")}`} onClose={() => setInvoiceFor(null)}>
-          <p style={{ fontSize: 12.5, color: SLATE, marginBottom: 2 }}>To: <strong style={{ color: INK }}>{invoiceFor.vendorName}</strong> · {invoiceFor.vendorPhone}</p>
-          <p style={{ fontSize: 11.5, color: SLATE, marginBottom: 12 }}>{fmtDateTime(invoiceFor.createdAt)}</p>
-          {invoiceFor.lines.map((l) => (
-            <div key={l.itemId} className="flex justify-between" style={{ padding: "6px 0", borderBottom: `1px solid ${LINE}` }}>
-              <span style={{ fontSize: 12.5 }}>{l.itemName} <span style={{ color: SLATE }}>x{l.qty}</span></span>
-              <span style={{ fontFamily: MONO_FONT, fontSize: 12.5, fontWeight: 600 }}>{fmtKES(l.subtotal)}</span>
-            </div>
-          ))}
-          <div className="flex justify-between" style={{ marginTop: 10, marginBottom: 16 }}>
-            <span style={{ fontWeight: 700 }}>Total</span>
-            <span style={{ fontFamily: MONO_FONT, fontWeight: 800, fontSize: 15 }}>{fmtKES(invoiceFor.total)}</span>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => sendViaWhatsapp(invoiceFor)} className="focus-ring flex items-center justify-center gap-1.5" style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: "none", background: "#25D366", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}><MessageCircle size={16} /> WhatsApp</button>
-            <button onClick={() => printInvoice(invoiceFor)} className="focus-ring flex items-center justify-center gap-1.5" style={{ flex: 1, padding: "11px 0", borderRadius: 10, border: `1px solid ${LINE}`, background: "#fff", color: INK, fontSize: 13, fontWeight: 700, cursor: "pointer" }}><Printer size={16} /> Print / PDF</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  EXPENSES
- * ---------------------------------------------------------------------- */
-function ExpensesView({ expenses, update, session }) {
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ description: "", amount: "", date: todayISO() });
-  const sorted = [...expenses].sort((a, b) => (a.date < b.date ? 1 : -1));
-
-  const save = async () => {
-    if (!form.description.trim() || !form.amount) return;
-    await update.expenses([...expenses, { id: uid(), description: form.description, amount: Number(form.amount), date: form.date, recordedBy: session.name }]);
-    setShowForm(false);
-    setForm({ description: "", amount: "", date: todayISO() });
-  };
-  const remove = async (id) => update.expenses(expenses.filter((e) => e.id !== id));
-
-  return (
-    <div className="px-4 py-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800 }}>Expenses</h2>
-        <button onClick={() => setShowForm(true)} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add</button>
-      </div>
-      {sorted.length === 0 && <EmptyState text="No expenses recorded yet." />}
-      {sorted.map((e) => (
-        <SectionCard key={e.id}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p style={{ fontWeight: 600, fontSize: 13.5 }}>{e.description}</p>
-              <p style={{ fontSize: 11.5, color: SLATE, marginTop: 2 }}>{fmtDate(e.date)} · {e.recordedBy}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <p style={{ fontFamily: MONO_FONT, fontWeight: 700, color: RED }}>{fmtKES(e.amount)}</p>
-              <button onClick={() => remove(e.id)} className="focus-ring" style={{ padding: 4, background: "none", border: "none", color: RED, cursor: "pointer" }}><Trash2 size={13} /></button>
-            </div>
-          </div>
-        </SectionCard>
-      ))}
-      {showForm && (
-        <Modal title="Add expense" onClose={() => setShowForm(false)}>
-          <Field label="Description"><input className="focus-ring" style={inputStyle} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-          <Field label="Amount (Ksh)"><input type="number" className="focus-ring" style={inputStyle} value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
-          <Field label="Date"><input type="date" className="focus-ring" style={inputStyle} value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
-          <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  REPORTS
- * ---------------------------------------------------------------------- */
-function ReportsView({ sales, expenses, items, deleteSale }) {
-  const [range, setRange] = useState("today");
-  const [customFrom, setCustomFrom] = useState(todayISO());
-  const [customTo, setCustomTo] = useState(todayISO());
-
-  const { from, to } = useMemo(() => {
-    const now = new Date();
-    const t = todayISO();
-    if (range === "today") return { from: t, to: t };
-    if (range === "week") {
-      const d = new Date(now); const day = d.getDay(); const diff = (day === 0 ? 6 : day - 1);
-      d.setDate(d.getDate() - diff);
-      return { from: d.toISOString().slice(0, 10), to: t };
-    }
-    if (range === "month") {
-      const d = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { from: d.toISOString().slice(0, 10), to: t };
-    }
-    return { from: customFrom, to: customTo };
-  }, [range, customFrom, customTo]);
-
-  const filteredSales = sales.filter((s) => inRange(s.createdAt, from, to));
-  const filteredExpenses = expenses.filter((e) => e.date >= from && e.date <= to);
-  const salesTotal = filteredSales.reduce((s, x) => s + x.total, 0);
-  const expensesTotal = filteredExpenses.reduce((s, x) => s + Number(x.amount), 0);
-  const cogs = filteredSales.reduce((sum, s) => sum + s.lines.reduce((ls, l) => {
-    if (l.kind !== "item") return ls;
-    const item = items.find((i) => i.id === l.refId);
-    return ls + (item ? item.buyingPrice * l.qty : 0);
-  }, 0), 0);
-  const netProfit = salesTotal - cogs - expensesTotal;
-  const byMethod = {};
-  filteredSales.forEach((s) => { byMethod[s.paymentMethod] = (byMethod[s.paymentMethod] || 0) + s.total; });
-
-  return (
-    <div className="px-4 py-4">
-      <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800, marginBottom: 10 }}>Reports</h2>
-      <div className="flex gap-1.5 mb-3" style={{ flexWrap: "wrap" }}>
-        {[["today", "Today"], ["week", "This Week"], ["month", "This Month"], ["custom", "Custom"]].map(([k, label]) => (
-          <button key={k} onClick={() => setRange(k)} className="focus-ring" style={{ padding: "7px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, border: `1px solid ${range === k ? "transparent" : LINE}`, background: range === k ? INK : "#fff", color: range === k ? "#fff" : INK, cursor: "pointer" }}>{label}</button>
-        ))}
-      </div>
-      {range === "custom" && (
-        <div className="flex gap-2 mb-3">
-          <input type="date" className="focus-ring" style={inputStyle} value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-          <input type="date" className="focus-ring" style={inputStyle} value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-        <StatCard label="Sales" value={fmtKES(salesTotal)} />
-        <StatCard label="Expenses" value={fmtKES(expensesTotal)} tone={RED} />
-        <StatCard label="Net Profit" value={fmtKES(netProfit)} tone={netProfit >= 0 ? GREEN : RED} />
-        <StatCard label="Transactions" value={filteredSales.length} />
-      </div>
-
-      <SectionCard>
-        <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", marginBottom: 8 }}>By payment method</p>
-        {Object.keys(byMethod).length === 0 && <p style={{ fontSize: 12.5, color: "#A79F8C" }}>No sales in this range.</p>}
-        {PAYMENT_METHODS.map((m) => byMethod[m] ? (
-          <div key={m} className="flex justify-between" style={{ padding: "4px 0", fontSize: 13 }}><span>{m}</span><span style={{ fontFamily: MONO_FONT, fontWeight: 600 }}>{fmtKES(byMethod[m])}</span></div>
-        ) : null)}
-      </SectionCard>
-
-      <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", margin: "14px 0 8px" }}>Transactions</p>
-      {[...filteredSales].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1)).map((s) => (
-        <SectionCard key={s.id}>
-          <div className="flex justify-between items-start">
-            <div>
-              <p style={{ fontSize: 12.5, fontWeight: 600 }}>Receipt #{String(s.receiptNo).padStart(6, "0")}</p>
-              <p style={{ fontSize: 11, color: SLATE, marginTop: 1 }}>{fmtDateTime(s.createdAt)} · {s.cashierName} · {s.paymentMethod}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(s.total)}</p>
-              <button
-                onClick={() => {
-                  if (window.confirm(`Delete Receipt #${String(s.receiptNo).padStart(6, "0")} (${fmtKES(s.total)})? Any stock it used will be restored. This cannot be undone.`)) {
-                    deleteSale(s.id);
-                  }
-                }}
-                className="focus-ring"
-                title="Delete sale"
-                style={{ padding: 5, background: "none", border: "none", color: RED, cursor: "pointer" }}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-        </SectionCard>
-      ))}
-
-      {filteredExpenses.length > 0 && (
+      {!isAdmin && myReceivedRounds.length > 0 && (
         <>
-          <p style={{ fontSize: 11, fontWeight: 700, color: SLATE, textTransform: "uppercase", margin: "14px 0 8px" }}>Expenses</p>
-          {filteredExpenses.map((e) => (
-            <SectionCard key={e.id}>
-              <div className="flex justify-between">
-                <div><p style={{ fontSize: 12.5, fontWeight: 600 }}>{e.description}</p><p style={{ fontSize: 11, color: SLATE }}>{fmtDate(e.date)}</p></div>
-                <p style={{ fontFamily: MONO_FONT, fontWeight: 700, color: RED }}>{fmtKES(e.amount)}</p>
-              </div>
+          <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>Merry-go-round: money you received</p>
+          {myReceivedRounds.map((r) => (
+            <SectionCard key={r.month + r.recipient_id}>
+              <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{monthLabel(r.month)} — {fmtKES(r.total)}</p>
+              <p className="text-xs mt-1" style={{ color: "#7A7364" }}>From: {r.contributors.map(contribLine).join(", ")}</p>
             </SectionCard>
           ))}
         </>
       )}
-    </div>
-  );
-}
 
-/* ---------------------------------------------------------------------- *
- *  MY SALES (cashier view)
- * ---------------------------------------------------------------------- */
-function MySalesView({ sales, session, showReceipt, deleteSale }) {
-  const mine = sales.filter((s) => s.cashierId === session.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  const today = todayISO();
-  const todayMine = mine.filter((s) => s.createdAt.slice(0, 10) === today);
-  const todayTotal = todayMine.reduce((s, x) => s + x.total, 0);
+      {isAdmin && mgrRounds.length > 0 && (
+        <>
+          <p className="text-xs font-medium mb-2" style={{ color: "#7A7364" }}>Merry-go-round rounds</p>
+          {mgrRounds.map((r) => (
+            <SectionCard key={r.month + r.recipient_id}>
+              <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{monthLabel(r.month)} → <span style={{ color: GOLD }}>{memberName(r.recipient_id)}</span></p>
+              <p className="text-xs mt-1" style={{ color: "#7A7364" }}>Total collected: {fmtKES(r.total)}</p>
+              <p className="text-xs mt-1" style={{ color: "#7A7364" }}>Contributors: {r.contributors.map(contribLine).join(", ")}</p>
+            </SectionCard>
+          ))}
+        </>
+      )}
 
-  const handleDelete = (s) => {
-    if (window.confirm(`Delete Receipt #${String(s.receiptNo).padStart(6, "0")} (${fmtKES(s.total)})? Any stock it used will be restored. This cannot be undone.`)) {
-      deleteSale(s.id);
-    }
-  };
-
-  return (
-    <div className="px-4 py-4">
-      <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800, marginBottom: 4 }}>My Sales</h2>
-      <p style={{ fontSize: 12, color: SLATE, marginBottom: 10 }}>Today: {todayMine.length} sales · {fmtKES(todayTotal)}</p>
-      {mine.length === 0 && <EmptyState text="No sales yet." />}
-      {mine.map((s) => (
-        <div key={s.id} className="flex items-center gap-1.5" style={{ marginBottom: 10 }}>
-          <button onClick={() => showReceipt(s)} className="focus-ring" style={{ flex: 1, textAlign: "left", background: PANEL, border: `1px solid ${LINE}`, borderRadius: 12, padding: 14, cursor: "pointer" }}>
-            <div className="flex justify-between">
-              <div>
-                <p style={{ fontSize: 12.5, fontWeight: 600 }}>Receipt #{String(s.receiptNo).padStart(6, "0")}</p>
-                <p style={{ fontSize: 11, color: SLATE, marginTop: 1 }}>{fmtDateTime(s.createdAt)} · {s.paymentMethod}</p>
-              </div>
-              <p style={{ fontFamily: MONO_FONT, fontWeight: 700 }}>{fmtKES(s.total)}</p>
+      <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>{isAdmin ? "All records" : "Your records"}</p>
+      {sorted.length === 0 && <EmptyState text="No contributions recorded yet." />}
+      {sorted.map((c) => (
+        <SectionCard key={c.id}>
+          <div className="flex justify-between items-start">
+            <div>
+              {isAdmin && <p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{memberName(c.member_id)}</p>}
+              <p className="text-sm font-semibold mt-0.5" style={{ color: GOLD }}>{fmtKES(c.amount)} <span className="text-xs font-normal" style={{ color: "#7A7364" }}>· {typeLabel(c.type)}</span></p>
+              {c.type === "merryGoRound" && c.recipient_id && (
+                <p className="text-xs mt-0.5" style={{ color: TEAL }}>
+                  → Given to {memberName(c.recipient_id)}{c.sugar_given ? " + 1kg sugar" : ""}
+                </p>
+              )}
+              <p className="text-xs mt-1" style={{ color: "#7A7364" }}>{fmtDate(c.date)}{c.note ? ` · ${c.note}` : ""}</p>
             </div>
-          </button>
-          <button onClick={() => handleDelete(s)} className="focus-ring" title="Delete sale" style={{ padding: 10, background: PANEL, border: `1px solid ${LINE}`, borderRadius: 10, color: RED, cursor: "pointer" }}>
-            <Trash2 size={15} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------------------- *
- *  USERS
- * ---------------------------------------------------------------------- */
-function UsersView({ users, update, session }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [form, setForm] = useState({ name: "", pin: "", role: "Cashier" });
-
-  const openNew = () => { setForm({ name: "", pin: "", role: "Cashier" }); setEditing(null); setShowForm(true); };
-  const openEdit = (u) => { setForm({ name: u.name, pin: u.pin, role: u.role }); setEditing(u.id); setShowForm(true); };
-
-  const save = async () => {
-    if (!form.name.trim() || !/^\d{4,6}$/.test(form.pin)) return;
-    if (editing) {
-      await update.users(users.map((u) => (u.id === editing ? { ...u, ...form } : u)));
-    } else {
-      await update.users([...users, { id: uid(), ...form }]);
-    }
-    setShowForm(false);
-  };
-  const remove = async (id) => {
-    if (id === session.id) return;
-    const admins = users.filter((u) => u.role === "Administrator");
-    const target = users.find((u) => u.id === id);
-    if (target.role === "Administrator" && admins.length <= 1) return;
-    await update.users(users.filter((u) => u.id !== id));
-  };
-
-  return (
-    <div className="px-4 py-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800 }}>Users ({users.length})</h2>
-        <button onClick={openNew} className="focus-ring flex items-center gap-1.5" style={{ padding: "8px 13px", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> Add</button>
-      </div>
-      {users.map((u) => (
-        <SectionCard key={u.id}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#EFE3C8", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 12 }}>{u.name.slice(0, 2).toUpperCase()}</div>
-              <div>
-                <p style={{ fontWeight: 600, fontSize: 13.5 }}>{u.name}{u.id === session.id ? " (you)" : ""}</p>
-                <p className="flex items-center gap-1" style={{ fontSize: 11.5, color: SLATE }}><Lock size={10} /> PIN {u.pin} · {u.role}</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <button onClick={() => openEdit(u)} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: SLATE, cursor: "pointer" }}><Pencil size={14} /></button>
-              <button onClick={() => remove(u.id)} disabled={u.id === session.id} className="focus-ring" style={{ padding: 6, background: "none", border: "none", color: u.id === session.id ? "#D8D2BD" : RED, cursor: u.id === session.id ? "not-allowed" : "pointer" }}><Trash2 size={14} /></button>
-            </div>
+            {isAdmin && <button onClick={() => crud.removeContribution(c.id)} className="p-1.5 rounded-full" style={{ background: "#F6E4DE" }}><Trash2 size={13} color="#B3391F" /></button>}
           </div>
         </SectionCard>
       ))}
+
       {showForm && (
-        <Modal title={editing ? "Edit user" : "Add user"} onClose={() => setShowForm(false)}>
-          <Field label="Full name"><input className="focus-ring" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-          <Field label="PIN (4–6 digits)"><input inputMode="numeric" className="focus-ring" style={inputStyle} value={form.pin} onChange={(e) => setForm({ ...form, pin: e.target.value.replace(/\D/g, "") })} /></Field>
-          <Field label="Role">
-            <select className="focus-ring" style={inputStyle} value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option>Administrator</option>
-              <option>Cashier</option>
+        <Modal onClose={() => setShowForm(false)} title="Record contribution">
+          <Field label="Member">
+            <select className="input" value={form.member_id} onChange={(e) => setForm({ ...form, member_id: e.target.value })}>
+              {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           </Field>
+          <Field label="Type">
+            <select className="input" value={form.type} onChange={(e) => {
+              const type = e.target.value;
+              const defaultAmt = settings[typeToSettingCol(type)];
+              setForm({ ...form, type, amount: defaultAmt, recipient_id: type === "merryGoRound" ? form.recipient_id : "" });
+            }}>
+              {CONTRIB_TYPES.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
+            </select>
+          </Field>
+          {form.type === "merryGoRound" && (
+            <>
+              <Field label="Recipient (who this round goes to)">
+                <select className="input" value={form.recipient_id} onChange={(e) => setForm({ ...form, recipient_id: e.target.value })}>
+                  <option value="">Select recipient…</option>
+                  {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+              </Field>
+              <label className="flex items-center gap-2 mb-3 text-sm" style={{ color: TEAL_DARK }}>
+                <input type="checkbox" checked={form.sugar_given} onChange={(e) => setForm({ ...form, sugar_given: e.target.checked })} />
+                1kg sugar contributed
+              </label>
+            </>
+          )}
+          <Field label="Amount (Ksh)"><input type="number" className="input" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} /></Field>
+          <Field label="Date"><input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label="Note (optional)"><input className="input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="e.g. for bereavement of..." /></Field>
           <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
         </Modal>
       )}
@@ -1632,30 +1042,643 @@ function UsersView({ users, update, session }) {
   );
 }
 
-/* ---------------------------------------------------------------------- *
- *  SETTINGS
- * ---------------------------------------------------------------------- */
-function SettingsView({ settings, update }) {
+
+/* ---------------- INTEREST SHARING ---------------- */
+function InterestSharingTab({ session, members, contributions, interestRounds, interestDistributions, crud }) {
+  const isAdmin = session.role === "admin";
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(() => {
+    const end = todayISO();
+    const start = new Date(end + "T00:00:00");
+    start.setMonth(start.getMonth() - 12);
+    return { name: "Interest Round", start_date: start.toISOString().slice(0, 10), end_date: end, total_interest: "", retained_amount: "0" };
+  });
+  const [err, setErr] = useState("");
+
+  const memberName = (id) => members.find((m) => m.id === id)?.name || "Unknown member";
+  const roundRows = (roundId) => interestDistributions.filter((d) => d.round_id === roundId)
+    .sort((a, b) => Number(b.interest_share) - Number(a.interest_share));
+
+  const preview = useMemo(() => {
+    const start = form.start_date;
+    const end = form.end_date;
+    const rows = members.map((m) => {
+      const total = contributions
+        .filter((c) => c.member_id === m.id && c.type === "tableBanking" && c.date >= start && c.date <= end)
+        .reduce((s, c) => s + Number(c.amount || 0), 0);
+      return { member_id: m.id, contribution_total: Math.round(total * 100) / 100 };
+    }).filter((r) => r.contribution_total > 0);
+    const totalContrib = rows.reduce((s, r) => s + r.contribution_total, 0);
+    const interest = Math.max(0, Number(form.total_interest) || 0);
+    const retained = Math.min(interest, Math.max(0, Number(form.retained_amount) || 0));
+    const distributable = interest - retained;
+    return {
+      rows: rows.map((r) => ({
+        ...r,
+        percentage: totalContrib ? (r.contribution_total / totalContrib) * 100 : 0,
+        interest_share: totalContrib ? Math.round((r.contribution_total / totalContrib) * distributable * 100) / 100 : 0,
+      })),
+      totalContrib, distributable, retained
+    };
+  }, [members, contributions, form.start_date, form.end_date, form.total_interest, form.retained_amount]);
+
+  const save = async () => {
+    setErr("");
+    const interest = Number(form.total_interest);
+    const retained = Number(form.retained_amount || 0);
+    if (!isAdmin) return;
+    if (!form.name.trim()) { setErr("Enter a round name."); return; }
+    if (!form.start_date || !form.end_date || form.end_date < form.start_date) { setErr("Choose a valid start and end date."); return; }
+    if (!Number.isFinite(interest) || interest < 0) { setErr("Enter the total interest earned."); return; }
+    if (!Number.isFinite(retained) || retained < 0 || retained > interest) { setErr("Retained amount cannot be greater than total interest."); return; }
+    if (preview.totalContrib <= 0) { setErr("No Table Banking contributions were found in this round."); return; }
+
+    try {
+      const round = {
+        name: form.name.trim(),
+        start_date: form.start_date,
+        end_date: form.end_date,
+        total_interest: interest,
+        retained_amount: retained,
+        distributable_interest: preview.distributable,
+        total_contributions: preview.totalContrib,
+        status: "finalized",
+        finalized_at: new Date().toISOString(),
+      };
+      const shares = preview.rows.map((r) => ({
+        member_id: r.member_id,
+        contribution_total: r.contribution_total,
+        contribution_percentage: Math.round(r.percentage * 10000) / 10000,
+        interest_share: r.interest_share,
+      }));
+      await crud.addInterestRound(round, shares);
+      setShowForm(false);
+      setForm({ name: "Interest Round", start_date: form.start_date, end_date: form.end_date, total_interest: "", retained_amount: "0" });
+    } catch (e) {
+      setErr(e.message || "Could not save the interest round.");
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div><h2 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{isAdmin ? "Interest Sharing" : "My Interest"}</h2><p className="text-[10px] mt-1" style={{ color: "#7A7364" }}>Interest is shared in proportion to Table Banking contributions.</p></div>
+        {isAdmin && <button onClick={() => { setErr(""); setShowForm(true); }} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: TEAL, color: CREAM }}><Plus size={14} /> Close round</button>}
+      </div>
+
+      {!isAdmin ? (
+        interestDistributions.filter((d) => d.member_id === session.member_id).length === 0
+          ? <EmptyState text="No interest has been shared with you yet." />
+          : [...interestRounds].sort((a,b) => String(b.end_date).localeCompare(String(a.end_date))).map((r) => {
+              const d = interestDistributions.find((x) => x.round_id === r.id && x.member_id === session.member_id);
+              if (!d) return null;
+              return <SectionCard key={r.id}>
+                <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{r.name}</p>
+                <p className="text-[10px] mt-1" style={{ color: "#7A7364" }}>{fmtDate(r.start_date)} – {fmtDate(r.end_date)}</p>
+                <div className="grid grid-cols-3 gap-2 mt-3">
+                  <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Contribution</p><p className="text-xs font-bold" style={{ color: TEAL_DARK }}>{fmtKES(d.contribution_total)}</p></div>
+                  <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Share</p><p className="text-xs font-bold" style={{ color: GOLD }}>{Number(d.contribution_percentage || 0).toFixed(2)}%</p></div>
+                  <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Interest</p><p className="text-xs font-bold" style={{ color: TEAL }}>{fmtKES(d.interest_share)}</p></div>
+                </div>
+              </SectionCard>;
+            })
+      ) : (
+        <>
+          {interestRounds.length === 0 && <EmptyState text="No interest rounds closed yet." />}
+          {[...interestRounds].sort((a,b) => String(b.end_date).localeCompare(String(a.end_date))).map((r) => {
+            const rows = roundRows(r.id);
+            return <SectionCard key={r.id}>
+              <div className="flex items-start justify-between gap-2">
+                <div><p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{r.name}</p><p className="text-[10px] mt-1" style={{ color: "#7A7364" }}>{fmtDate(r.start_date)} – {fmtDate(r.end_date)}</p></div>
+                <button onClick={() => crud.removeInterestRound(r.id)} className="p-1.5 rounded-full" style={{ background: "#F6E4DE" }}><Trash2 size={13} color="#B3391F" /></button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Interest earned</p><p className="text-sm font-bold" style={{ color: GOLD }}>{fmtKES(r.total_interest)}</p></div>
+                <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Distributed</p><p className="text-sm font-bold" style={{ color: TEAL }}>{fmtKES(r.distributable_interest)}</p></div>
+              </div>
+              {r.retained_amount > 0 && <p className="text-[10px] mt-2" style={{ color: "#7A7364" }}>Retained by chama: {fmtKES(r.retained_amount)}</p>}
+              <div className="mt-3 space-y-2">
+                {rows.map((d) => <div key={d.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "#F8F3E7" }}>
+                  <div><p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{memberName(d.member_id)}</p><p className="text-[10px]" style={{ color: "#7A7364" }}>{Number(d.contribution_percentage || 0).toFixed(2)}% of contributions · {fmtKES(d.contribution_total)}</p></div>
+                  <p className="text-xs font-bold" style={{ color: GOLD }}>{fmtKES(d.interest_share)}</p>
+                </div>)}
+              </div>
+            </SectionCard>;
+          })}
+        </>
+      )}
+
+      {showForm && (
+        <Modal onClose={() => setShowForm(false)} title="Close interest round">
+          <Field label="Round name"><input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. 2026 Annual Interest" /></Field>
+          <Field label="Start date"><input type="date" className="input" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></Field>
+          <Field label="End date"><input type="date" className="input" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} /></Field>
+          <Field label="Total interest earned (Ksh)"><input type="number" min="0" step="0.01" className="input" value={form.total_interest} onChange={(e) => setForm({ ...form, total_interest: e.target.value })} /></Field>
+          <Field label="Amount to retain in chama (Ksh)"><input type="number" min="0" step="0.01" className="input" value={form.retained_amount} onChange={(e) => setForm({ ...form, retained_amount: e.target.value })} /></Field>
+
+          <SectionCard>
+            <p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>Automatic calculation</p>
+            <p className="text-[10px] mt-1" style={{ color: "#7A7364" }}>Only Table Banking contributions between the selected dates are used.</p>
+            <div className="grid grid-cols-2 gap-2 mt-3">
+              <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Eligible contributions</p><p className="text-sm font-bold" style={{ color: TEAL_DARK }}>{fmtKES(preview.totalContrib)}</p></div>
+              <div><p className="text-[10px]" style={{ color: "#8A8270" }}>To distribute</p><p className="text-sm font-bold" style={{ color: GOLD }}>{fmtKES(preview.distributable)}</p></div>
+            </div>
+            <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
+              {preview.rows.map((r) => <div key={r.member_id} className="flex justify-between text-xs"><span style={{ color: TEAL_DARK }}>{memberName(r.member_id)}</span><span style={{ color: GOLD }}>{Number(r.percentage).toFixed(2)}% · {fmtKES(r.interest_share)}</span></div>)}
+            </div>
+          </SectionCard>
+          {err && <p className="text-xs mb-2" style={{ color: "#B3391F" }}>{err}</p>}
+          <p className="text-[10px] mt-2" style={{ color: "#7A7364" }}>After saving, the shares are finalized as a snapshot for this round.</p>
+          <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- LOANS ---------------- */
+function LoansTab({ session, members, loans, loanRepayments, contributions, settings, crud }) {
+  const isAdmin = session.role === "admin";
+  const [showForm, setShowForm] = useState(false);
+  const [repayFor, setRepayFor] = useState(null);
+  const [formErr, setFormErr] = useState("");
+  const [form, setForm] = useState(blank());
+  function blank() {
+    const borrowed = todayISO();
+    const due = new Date(borrowed + "T00:00:00");
+    due.setDate(due.getDate() + 30);
+    return { member_id: members[0]?.id || "", principal: "", interest_rate: settings.loan_interest_rate ?? 10, date_borrowed: borrowed, due_date: due.toISOString().slice(0, 10), note: "" };
+  }
+
+  const balance = useMemo(() => Math.max(0, tableBankingBalance(contributions, loans, loanRepayments)), [contributions, loans, loanRepayments]);
+  const outstandingPrincipal = useMemo(() => loans.reduce((sum, l) => {
+    const remaining = Math.max(0, Number(l.principal) - Math.min(Number(l.principal), Number(l.amount_repaid)));
+    return sum + remaining;
+  }, 0), [loans]);
+  const outstandingDue = useMemo(() => loans.reduce((sum, l) => sum + Math.max(0, Number(l.total_due) - Number(l.amount_repaid)), 0), [loans]);
+  const totalRepaid = useMemo(() => loanRepayments.reduce((sum, r) => sum + Number(r.amount), 0), [loanRepayments]);
+
+  const visibleLoans = isAdmin ? loans : loans.filter((l) => l.member_id === session.member_id);
+  const sorted = [...visibleLoans].sort((a, b) => (a.date_borrowed < b.date_borrowed ? 1 : -1));
+  const dueSoonLoans = visibleLoans.filter((l) => {
+    const d = daysUntil(l.due_date);
+    return l.status !== "repaid" && l.due_date && d >= 0 && d <= 7;
+  });
+  const overdueLoans = visibleLoans.filter((l) => l.status !== "repaid" && l.due_date && daysUntil(l.due_date) < 0);
+
+  const memberName = (id) => members.find((m) => m.id === id)?.name || "Unknown";
+  const memberPhone = (id) => members.find((m) => m.id === id)?.contact || "";
+  const repaymentsFor = (loanId) => loanRepayments.filter((r) => r.loan_id === loanId).sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  // Automatic in-app due notice: it appears to the member from 7 days before
+  // the due date and remains visible until the loan is fully repaid.
+  useEffect(() => {
+    if (!isAdmin && dueSoonLoans.length > 0 && "Notification" in window && Notification.permission === "granted") {
+      dueSoonLoans.forEach((l) => new Notification("Matayia's Welfare — Loan due", { body: loanDueMessage(l) }));
+    }
+  }, [isAdmin, dueSoonLoans.map((l) => `${l.id}:${l.due_date}`).join("|")]);
+
+  const save = async () => {
+    setFormErr("");
+    const amount = Number(form.principal);
+    const rate = Number(form.interest_rate);
+    if (!form.member_id) { setFormErr("Select a member."); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { setFormErr("Enter a valid loan amount greater than zero."); return; }
+    if (!form.date_borrowed) { setFormErr("Select the date the loan was borrowed."); return; }
+    if (!form.due_date) { setFormErr("Select the loan due/return date."); return; }
+    if (form.due_date < form.date_borrowed) { setFormErr("Due/return date cannot be before the borrowing date."); return; }
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) { setFormErr("Interest rate must be between 0% and 100%."); return; }
+    try {
+      await crud.addLoan(form);
+      setShowForm(false);
+    } catch (e) {
+      setFormErr(e.message || "Couldn't record loan.");
+    }
+  };
+
+  const requestNotifications = async () => {
+    if (!("Notification" in window)) return;
+    try { await Notification.requestPermission(); } catch {}
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{isAdmin ? "Loans" : "My Loans"}</h2>
+        {isAdmin && <button onClick={() => { setForm(blank()); setFormErr(""); setShowForm(true); }} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: TEAL, color: CREAM }}><Plus size={14} /> New loan</button>}
+      </div>
+
+      {!isAdmin && dueSoonLoans.length > 0 && (
+        <SectionCard>
+          <div className="flex items-start gap-2">
+            <AlertCircle size={18} color="#B3391F" className="mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold" style={{ color: "#B3391F" }}>Loan payment reminder</p>
+              {dueSoonLoans.map((l) => <p key={l.id} className="text-xs mt-1" style={{ color: TEAL_DARK }}>{loanDueMessage(l)}</p>)}
+              {"Notification" in window && Notification.permission !== "granted" && <button onClick={requestNotifications} className="text-xs underline mt-2" style={{ color: TEAL }}>Enable phone notifications</button>}
+            </div>
+          </div>
+        </SectionCard>
+      )}
+
+      {isAdmin && (dueSoonLoans.length > 0 || overdueLoans.length > 0) && (
+        <SectionCard>
+          <p className="text-xs font-semibold" style={{ color: overdueLoans.length ? "#B3391F" : GOLD }}>Loan due alerts</p>
+          {overdueLoans.map((l) => <p key={l.id} className="text-xs mt-1" style={{ color: "#B3391F" }}>{memberName(l.member_id)} — overdue since {fmtDate(l.due_date)}.</p>)}
+          {dueSoonLoans.map((l) => <p key={l.id} className="text-xs mt-1" style={{ color: TEAL_DARK }}>{memberName(l.member_id)} — {loanDueMessage(l)}</p>)}
+        </SectionCard>
+      )}
+
+      <SectionCard>
+        <p className="text-xs font-medium" style={{ color: "#8A8270" }}>Table banking fund available</p>
+        <p className="text-lg font-semibold mt-1" style={{ color: balance > 0 ? TEAL_DARK : "#B3391F" }}>{fmtKES(balance)}</p>
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="rounded-lg p-2" style={{ background: "#F7F1E4" }}><p className="text-[10px]" style={{ color: "#8A8270" }}>Outstanding principal</p><p className="text-xs font-semibold mt-0.5" style={{ color: TEAL_DARK }}>{fmtKES(outstandingPrincipal)}</p></div>
+          <div className="rounded-lg p-2" style={{ background: "#F7F1E4" }}><p className="text-[10px]" style={{ color: "#8A8270" }}>Amount still due</p><p className="text-xs font-semibold mt-0.5" style={{ color: TEAL_DARK }}>{fmtKES(outstandingDue)}</p></div>
+          <div className="rounded-lg p-2" style={{ background: "#F7F1E4" }}><p className="text-[10px]" style={{ color: "#8A8270" }}>Repayments received</p><p className="text-xs font-semibold mt-0.5" style={{ color: TEAL_DARK }}>{fmtKES(totalRepaid)}</p></div>
+        </div>
+      </SectionCard>
+
+      <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>{isAdmin ? "All loans" : "Your loans"}</p>
+      {sorted.length === 0 && <EmptyState text="No loans recorded yet." />}
+      {sorted.map((l) => {
+        const remaining = Math.max(0, Number(l.total_due) - Number(l.amount_repaid));
+        const reps = repaymentsFor(l.id);
+        const dueState = loanDueState(l);
+        return (
+          <SectionCard key={l.id}>
+            <div className="flex justify-between items-start">
+              <div className="min-w-0">
+                {isAdmin && <p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{memberName(l.member_id)}</p>}
+                <p className="text-sm font-semibold mt-0.5" style={{ color: GOLD }}>{fmtKES(l.principal)} borrowed <span className="text-xs font-normal" style={{ color: "#7A7364" }}>· {l.interest_rate}% interest</span></p>
+                <p className="text-xs mt-1" style={{ color: "#7A7364" }}>Total due {fmtKES(l.total_due)} · Repaid {fmtKES(l.amount_repaid)} · Balance <b style={{ color: remaining > 0 ? "#B3391F" : TEAL }}>{fmtKES(remaining)}</b></p>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <div><p className="text-[10px]" style={{ color: "#9A9382" }}>Borrowed</p><p className="text-xs font-medium" style={{ color: TEAL_DARK }}>{fmtDate(l.date_borrowed)}</p></div>
+                  <div><p className="text-[10px]" style={{ color: "#9A9382" }}>Due / return date</p><p className="text-xs font-medium" style={{ color: dueState.color }}>{fmtDate(l.due_date) || "Not set"}</p></div>
+                </div>
+                {l.actual_return_date && <p className="text-xs mt-1" style={{ color: TEAL }}>Actually returned/cleared: {fmtDate(l.actual_return_date)}</p>}
+                {l.note && <p className="text-xs mt-1" style={{ color: "#7A7364" }}>{l.note}</p>}
+                <span className="inline-block text-[10px] font-semibold uppercase mt-1.5 px-2 py-0.5 rounded-full" style={{ background: dueState.key === "repaid" ? "#E3F0EA" : dueState.key === "overdue" || dueState.key === "due_today" ? "#FBEDE7" : "#F7F1E4", color: dueState.color }}>
+                  {dueState.label}
+                </span>
+              </div>
+              {isAdmin && <button onClick={() => crud.removeLoan(l.id)} className="p-1.5 rounded-full" style={{ background: "#F6E4DE" }}><Trash2 size={13} color="#B3391F" /></button>}
+            </div>
+
+            {reps.length > 0 && (
+              <div className="mt-2 pt-2" style={{ borderTop: "1px solid #EDE6D3" }}>
+                <p className="text-[11px] font-medium mb-1" style={{ color: "#8A8270" }}>Repayment history</p>
+                {reps.map((r) => <p key={r.id} className="text-xs" style={{ color: "#7A7364" }}>{fmtDate(r.date)} — {fmtKES(r.amount)}</p>)}
+              </div>
+            )}
+
+            {isAdmin && l.status !== "repaid" && <div className="flex flex-wrap gap-2 mt-3">
+              <button onClick={() => setRepayFor(l)} className="text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: "#F1ECDD", color: TEAL_DARK }}>Record repayment</button>
+              {l.due_date && <a href={smsLink([memberPhone(l.member_id)], loanDueMessage(l))} className="text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: "#E7F0ED", color: TEAL_DARK }}>SMS reminder</a>}
+            </div>}
+          </SectionCard>
+        );
+      })}
+
+      {showForm && (
+        <Modal onClose={() => setShowForm(false)} title="Record a new loan">
+          <Field label="Member">
+            <select className="input" value={form.member_id} onChange={(e) => setForm({ ...form, member_id: e.target.value })}>
+              <option value="">Select a member</option>
+              {members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Date borrowed"><input type="date" className="input" value={form.date_borrowed} onChange={(e) => setForm({ ...form, date_borrowed: e.target.value })} /></Field>
+          <Field label="Due / return date"><input type="date" min={form.date_borrowed} className="input" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} /><p className="text-[10px] mt-1" style={{ color: "#8A8270" }}>The member will receive an in-app reminder automatically during the 7 days before this date.</p></Field>
+          <Field label="Amount to borrow (Ksh)"><input type="number" min="0.01" step="0.01" max={Math.max(0, balance)} className="input" value={form.principal} onChange={(e) => setForm({ ...form, principal: e.target.value })} /></Field>
+          <Field label="Interest rate (%)"><input type="number" min="0" max="100" step="0.01" className="input" value={form.interest_rate} onChange={(e) => setForm({ ...form, interest_rate: e.target.value })} /></Field>
+          <Field label="Note (optional)"><input className="input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></Field>
+          {formErr && <p className="text-xs mb-2" style={{ color: "#B3391F" }}>{formErr}</p>}
+          <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
+        </Modal>
+      )}
+
+      {repayFor && <RepaymentModal loan={repayFor} onClose={() => setRepayFor(null)} onSave={async (amount) => { await crud.addRepayment(repayFor.id, amount); setRepayFor(null); }} />}
+    </div>
+  );
+}
+
+function RepaymentModal({ loan, onClose, onSave }) {
+  const remaining = Number(loan.total_due) - Number(loan.amount_repaid);
+  const [amount, setAmount] = useState(remaining);
+  const [err, setErr] = useState("");
+  const save = async () => {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) { setErr("Enter a valid amount greater than zero."); return; }
+    if (value > remaining + 0.000001) { setErr(`Repayment cannot exceed ${fmtKES(remaining)}.`); return; }
+    try { await onSave(value); } catch (e) { setErr(e.message || "Couldn't record repayment."); }
+  };
+  return (
+    <Modal onClose={onClose} title="Record repayment">
+      <p className="text-xs mb-3" style={{ color: "#7A7364" }}>Balance remaining: {fmtKES(remaining)}</p>
+      <Field label="Amount received (Ksh)"><input type="number" min="0.01" step="0.01" max={remaining} className="input" value={amount} onChange={(e) => setAmount(e.target.value)} /></Field>
+      {err && <p className="text-xs mb-2" style={{ color: "#B3391F" }}>{err}</p>}
+      <ModalActions onCancel={onClose} onSave={save} />
+    </Modal>
+  );
+}
+
+/* ---------------- ANNOUNCEMENTS ---------------- */
+function AnnouncementsTab({ announcements, isAdmin, members, crud }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: "", body: "" });
+  const [smsFor, setSmsFor] = useState(null);
+  const sorted = [...announcements].sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  const save = async () => {
+    if (!form.title.trim()) return;
+    await crud.addAnnouncement({ ...form, date: todayISO() });
+    setShowForm(false);
+    setForm({ title: "", body: "" });
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Announcements</h2>
+        {isAdmin && <button onClick={() => setShowForm(true)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: TEAL, color: CREAM }}><Plus size={14} /> Post</button>}
+      </div>
+      {sorted.length === 0 && <EmptyState text="No announcements yet." />}
+      {sorted.map((a) => (
+        <SectionCard key={a.id}>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{a.title}</p>
+              <p className="text-xs mt-1" style={{ color: "#7A7364" }}>{a.body}</p>
+              <p className="text-[11px] mt-1.5" style={{ color: "#B0A992" }}>{fmtDate(a.date)}</p>
+            </div>
+            {isAdmin && <button onClick={() => crud.removeAnnouncement(a.id)} className="p-1.5 rounded-full" style={{ background: "#F6E4DE" }}><Trash2 size={13} color="#B3391F" /></button>}
+          </div>
+          {isAdmin && <button onClick={() => setSmsFor(a)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium mt-3" style={{ background: "#F1ECDD", color: TEAL_DARK }}><MessageSquare size={13} /> Send SMS</button>}
+        </SectionCard>
+      ))}
+
+      {showForm && (
+        <Modal onClose={() => setShowForm(false)} title="Post announcement">
+          <Field label="Title"><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} /></Field>
+          <Field label="Message"><textarea rows={3} className="input" value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} /></Field>
+          <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
+        </Modal>
+      )}
+
+      {smsFor && <SmsModal phones={members.map((m) => m.contact)} message={`${smsFor.title}: ${smsFor.body}`} onClose={() => setSmsFor(null)} />}
+    </div>
+  );
+}
+
+/* ---------------- MINUTES ---------------- */
+function MinutesTab({ minutes, isAdmin, crud }) {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: "", date: todayISO(), content: "" });
+  const sorted = [...minutes].sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  const save = async () => {
+    if (!form.title.trim() || !form.content.trim()) return;
+    await crud.addMinutes(form);
+    setShowForm(false);
+    setForm({ title: "", date: todayISO(), content: "" });
+  };
+
+  const downloadPdf = (m) => {
+    const w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write(`
+      <html><head><title>${m.title}</title>
+      <style>
+        body { font-family: Georgia, serif; padding: 40px; color: #0D302D; max-width: 700px; margin: auto; }
+        h1 { font-size: 20px; border-bottom: 2px solid #C99A2E; padding-bottom: 10px; }
+        .date { color: #7A7364; font-size: 13px; margin-bottom: 24px; }
+        .content { white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+        .header { font-size: 12px; color: #164B47; text-transform: uppercase; letter-spacing: 1px; }
+      </style></head>
+      <body>
+        <div class="header">Matayia's Welfare — Minutes</div>
+        <h1>${m.title}</h1>
+        <div class="date">${fmtDate(m.date)}</div>
+        <div class="content">${m.content.replace(/</g, "&lt;")}</div>
+      </body></html>
+    `);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 300);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Minutes</h2>
+        {isAdmin && <button onClick={() => setShowForm(true)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium" style={{ background: TEAL, color: CREAM }}><Plus size={14} /> Add minutes</button>}
+      </div>
+      {sorted.length === 0 && <EmptyState text="No minutes recorded yet." />}
+      {sorted.map((m) => (
+        <SectionCard key={m.id}>
+          <div className="flex justify-between items-start">
+            <div className="flex-1">
+              <p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{m.title}</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "#B0A992" }}>{fmtDate(m.date)}</p>
+              <p className="text-xs mt-1.5" style={{ color: "#7A7364", whiteSpace: "pre-wrap" }}>{m.content.length > 160 ? m.content.slice(0, 160) + "…" : m.content}</p>
+            </div>
+            {isAdmin && <button onClick={() => crud.removeMinutes(m.id)} className="p-1.5 rounded-full ml-2" style={{ background: "#F6E4DE" }}><Trash2 size={13} color="#B3391F" /></button>}
+          </div>
+          <button onClick={() => downloadPdf(m)} className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-full font-medium mt-3" style={{ background: "#F1ECDD", color: TEAL_DARK }}><Printer size={13} /> Save as PDF</button>
+        </SectionCard>
+      ))}
+
+      {showForm && (
+        <Modal onClose={() => setShowForm(false)} title="Add minutes">
+          <Field label="Title"><input className="input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. August Monthly Meeting" /></Field>
+          <Field label="Date"><input type="date" className="input" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} /></Field>
+          <Field label="Minutes"><textarea rows={8} className="input" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} placeholder="Record what was discussed, decisions made, and action points…" /></Field>
+          <ModalActions onCancel={() => setShowForm(false)} onSave={save} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- SETTINGS ---------------- */
+function SettingsTab({ settings, crud }) {
   const [form, setForm] = useState(settings);
   const [saved, setSaved] = useState(false);
   const save = async () => {
-    await update.settings({ ...form, nextReceiptNo: Number(form.nextReceiptNo) });
+    await crud.saveSettings({
+      monthly: Number(form.monthly),
+      merry_go_round: Number(form.merry_go_round),
+      benevolent: Number(form.benevolent),
+      table_banking: Number(form.table_banking),
+      loan_interest_rate: Number(form.loan_interest_rate),
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };
   return (
-    <div className="px-4 py-4">
-      <h2 style={{ fontFamily: DISPLAY_FONT, fontSize: 17, fontWeight: 800, marginBottom: 10 }}>Settings</h2>
+    <div>
+      <h2 className="text-sm font-semibold mb-3" style={{ color: TEAL_DARK }}>Contribution amounts</h2>
       <SectionCard>
-        <Field label="Business name"><input className="focus-ring" style={inputStyle} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-        <Field label="Address"><input className="focus-ring" style={inputStyle} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></Field>
-        <Field label="Phone (optional)"><input className="focus-ring" style={inputStyle} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-        <Field label="Receipt footer message"><input className="focus-ring" style={inputStyle} value={form.receiptFooter} onChange={(e) => setForm({ ...form, receiptFooter: e.target.value })} /></Field>
-        <Field label="Next receipt number"><input type="number" className="focus-ring" style={inputStyle} value={form.nextReceiptNo} onChange={(e) => setForm({ ...form, nextReceiptNo: e.target.value })} /></Field>
-        <button onClick={save} className="focus-ring w-full" style={{ padding: "10px 0", borderRadius: 9, border: "none", background: INK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", marginTop: 4 }}>
-          {saved ? "Saved ✓" : "Save changes"}
+        <Field label="Monthly Share (Ksh)"><input type="number" className="input" value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} /></Field>
+        <Field label="Merry-Go-Round (Ksh)"><input type="number" className="input" value={form.merry_go_round} onChange={(e) => setForm({ ...form, merry_go_round: e.target.value })} /></Field>
+        <Field label="Benevolent Fund (Ksh)"><input type="number" className="input" value={form.benevolent} onChange={(e) => setForm({ ...form, benevolent: e.target.value })} /></Field>
+        <Field label="Table Banking (Ksh)"><input type="number" className="input" value={form.table_banking} onChange={(e) => setForm({ ...form, table_banking: e.target.value })} /></Field>
+        <Field label="Loan interest rate (%)"><input type="number" className="input" value={form.loan_interest_rate} onChange={(e) => setForm({ ...form, loan_interest_rate: e.target.value })} /></Field>
+        <button onClick={save} className="w-full rounded-lg py-2.5 text-sm font-semibold mt-2 flex items-center justify-center gap-2" style={{ background: TEAL, color: CREAM }}>
+          {saved ? <><Check size={15} /> Saved</> : "Save changes"}
         </button>
       </SectionCard>
+    </div>
+  );
+}
+
+/* ---------------- CHANGE PASSWORD ---------------- */
+function ChangePasswordModal({ session, accounts, crud, onClose }) {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const [done, setDone] = useState(false);
+
+  const save = async () => {
+    const acc = accounts.find((a) => a.id === session.id);
+    if (!acc || acc.password !== current) { setErr("Current password is incorrect."); return; }
+    if (!next.trim() || next.length < 4) { setErr("New password must be at least 4 characters."); return; }
+    if (next !== confirm) { setErr("New passwords do not match."); return; }
+    await crud.updateAccount(session.id, { password: next });
+    setDone(true);
+    setTimeout(onClose, 1000);
+  };
+
+  return (
+    <Modal onClose={onClose} title="Change password">
+      <Field label="Current password"><input type="password" className="input" value={current} onChange={(e) => setCurrent(e.target.value)} /></Field>
+      <Field label="New password"><input type="password" className="input" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
+      <Field label="Confirm new password"><input type="password" className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} /></Field>
+      {err && <p className="text-xs mb-2" style={{ color: "#B3391F" }}>{err}</p>}
+      {done ? <div className="flex items-center gap-2 text-sm py-2" style={{ color: TEAL }}><Check size={16} /> Password changed</div> : <ModalActions onCancel={onClose} onSave={save} />}
+    </Modal>
+  );
+}
+
+/* ---------------- MEMBER HOME ---------------- */
+function MemberHome({ session, members, contributions, events, announcements, loans, interestRounds, interestDistributions }) {
+  const me = members.find((m) => m.id === session.member_id);
+  const mine = contributions.filter((c) => c.member_id === session.member_id);
+  const myLoans = loans.filter((l) => l.member_id === session.member_id && l.status !== "repaid");
+  const dueSoon = myLoans.filter((l) => l.due_date && daysUntil(l.due_date) >= 0 && daysUntil(l.due_date) <= 7);
+  const overdue = myLoans.filter((l) => l.due_date && daysUntil(l.due_date) < 0);
+  const totals = { monthly: 0, merryGoRound: 0, benevolent: 0, tableBanking: 0 };
+  mine.forEach((c) => { totals[c.type] = (totals[c.type] || 0) + Number(c.amount); });
+
+  // Money/sugar this member has received from Merry-Go-Round contributions.
+  // Each contribution keeps the giver in member_id and the recipient in recipient_id.
+  const memberName = (id) => members.find((m) => m.id === id)?.name || "Unknown member";
+  const receivedMgr = contributions
+    .filter((c) => c.type === "merryGoRound" && c.recipient_id === session.member_id)
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+  const receivedTotal = receivedMgr.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  const sugarCount = receivedMgr.reduce((sum, c) => sum + (c.sugar_given ? 1 : 0), 0);
+
+  const upcoming = [...events].filter((e) => e.date >= todayISO()).sort((a, b) => (a.date > b.date ? 1 : -1)).slice(0, 3);
+  const news = [...announcements].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 3);
+
+  return (
+    <div>
+      {me && <SectionCard><p className="text-xs font-medium" style={{ color: "#8A8270" }}>Your profile</p><p className="text-sm font-semibold mt-1" style={{ color: TEAL_DARK }}>{me.name}</p><p className="text-xs mt-0.5" style={{ color: "#7A7364" }}>ID: {me.national_id} · {me.contact}</p></SectionCard>}
+
+      {overdue.length > 0 && <SectionCard><div className="flex items-start gap-2"><AlertCircle size={18} color="#B3391F" className="mt-0.5" /><div><p className="text-sm font-semibold" style={{ color: "#B3391F" }}>Loan overdue</p>{overdue.map((l) => <p key={l.id} className="text-xs mt-1" style={{ color: TEAL_DARK }}>Your loan was due on {fmtDate(l.due_date)}. Kindly pay up to avoid penalties.</p>)}</div></div></SectionCard>}
+      {dueSoon.length > 0 && <SectionCard><div className="flex items-start gap-2"><AlertCircle size={18} color={GOLD} className="mt-0.5" /><div><p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Loan due reminder</p>{dueSoon.map((l) => <p key={l.id} className="text-xs mt-1" style={{ color: TEAL_DARK }}>Your loan is due on {fmtDate(l.due_date)} kindly pay up to avoid penalties.</p>)}</div></div></SectionCard>}
+
+      {(() => {
+        const myInterest = interestDistributions
+          .filter((d) => d.member_id === session.member_id)
+          .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+        const latest = myInterest.length ? myInterest[myInterest.length - 1] : null;
+        const round = latest ? interestRounds.find((r) => r.id === latest.round_id) : null;
+        return latest && round ? (
+          <SectionCard>
+            <div className="flex items-center gap-2 mb-2"><TrendingUp size={17} color={TEAL} /><p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>Latest interest share</p></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Your contribution</p><p className="text-sm font-bold" style={{ color: TEAL_DARK }}>{fmtKES(latest.contribution_total)}</p></div>
+              <div><p className="text-[10px]" style={{ color: "#8A8270" }}>Interest earned</p><p className="text-sm font-bold" style={{ color: GOLD }}>{fmtKES(latest.interest_share)}</p></div>
+            </div>
+            <p className="text-[10px] mt-2" style={{ color: "#7A7364" }}>{round.name} · {fmtDate(round.end_date)}</p>
+          </SectionCard>
+        ) : null;
+      })()}
+
+      <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>Your contributions so far</p>
+      <div className="grid grid-cols-2 gap-2 mb-4">{CONTRIB_TYPES.map((t) => <div key={t.key} className="rounded-xl p-3 text-center border" style={{ background: "#fff", borderColor: "#EDE6D3" }}><p className="text-[10px] font-medium" style={{ color: "#8A8270" }}>{t.label}</p><p className="text-sm font-semibold mt-1" style={{ color: TEAL_DARK }}>{fmtKES(totals[t.key])}</p></div>)}</div>
+
+      {receivedMgr.length > 0 && (
+        <>
+          <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>Merry-Go-Round &amp; Sugar received</p>
+          <SectionCard>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="rounded-lg p-2 border text-center" style={{ background: "#fff", borderColor: "#EDE6D3" }}>
+                <p className="text-[10px]" style={{ color: "#8A8270" }}>Money received</p>
+                <p className="text-sm font-semibold mt-1" style={{ color: TEAL_DARK }}>{fmtKES(receivedTotal)}</p>
+              </div>
+              <div className="rounded-lg p-2 border text-center" style={{ background: "#fff", borderColor: "#EDE6D3" }}>
+                <p className="text-[10px]" style={{ color: "#8A8270" }}>Sugar received</p>
+                <p className="text-sm font-semibold mt-1" style={{ color: TEAL_DARK }}>{sugarCount} kg</p>
+              </div>
+            </div>
+            <p className="text-xs font-medium mb-2" style={{ color: TEAL_DARK }}>Given by:</p>
+            <div className="space-y-2">
+              {receivedMgr.map((c) => (
+                <div key={c.id} className="flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "#F8F3E7" }}>
+                  <div>
+                    <p className="text-xs font-semibold" style={{ color: TEAL_DARK }}>{memberName(c.member_id)}</p>
+                    <p className="text-[10px] mt-0.5" style={{ color: "#7A7364" }}>{fmtDate(c.date)}{c.note ? ` · ${c.note}` : ""}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-semibold" style={{ color: GOLD }}>{fmtKES(c.amount)}</p>
+                    {c.sugar_given && <p className="text-[10px] mt-0.5" style={{ color: TEAL }}>+ 1kg sugar</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        </>
+      )}
+
+      <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>Upcoming events</p>
+      {upcoming.length === 0 && <EmptyState text="No upcoming events." />}
+      {upcoming.map((e) => <SectionCard key={e.id}><p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{e.title}</p><p className="text-xs mt-0.5" style={{ color: "#7A7364" }}>{fmtDate(e.date)}</p></SectionCard>)}
+
+      <p className="text-xs font-medium mb-2 mt-4" style={{ color: "#7A7364" }}>Latest announcements</p>
+      {news.length === 0 && <EmptyState text="No announcements yet." />}
+      {news.map((a) => <SectionCard key={a.id}><p className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{a.title}</p><p className="text-xs mt-0.5" style={{ color: "#7A7364" }}>{a.body}</p></SectionCard>)}
+    </div>
+  );
+}
+
+/* ---------------- SHARED UI ---------------- */
+function Modal({ title, children, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" style={{ background: "#0D302D99" }}>
+      <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl p-5 max-h-[85vh] overflow-y-auto" style={{ background: CREAM }}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold" style={{ color: TEAL_DARK }}>{title}</h3>
+          <button onClick={onClose}><X size={18} color="#8A8270" /></button>
+        </div>
+        {children}
+      </div>
+      <style>{`.input{width:100%;border:1px solid #D8CFBB;border-radius:8px;padding:9px 11px;font-size:13px;background:#fff;outline:none;color:${TEAL_DARK};margin-bottom:2px;}`}</style>
+    </div>
+  );
+}
+function Field({ label, children }) {
+  return <div className="mb-3"><label className="text-xs font-medium block mb-1" style={{ color: TEAL_DARK }}>{label}</label>{children}</div>;
+}
+function ModalActions({ onCancel, onSave }) {
+  return (
+    <div className="flex gap-2 mt-4">
+      <button onClick={onCancel} className="flex-1 rounded-lg py-2.5 text-sm font-medium" style={{ background: "#EDE6D3", color: TEAL_DARK }}>Cancel</button>
+      <button onClick={onSave} className="flex-1 rounded-lg py-2.5 text-sm font-semibold" style={{ background: TEAL, color: CREAM }}>Save</button>
     </div>
   );
 }
